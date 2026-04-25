@@ -12,6 +12,7 @@ export type ProductFormValue = {
   price: number | "";
   salePrice: number | "" | null;
   stock: number | "";
+  lowStockThreshold: number | "" | null;
   thumbnail: string;
   images: string[];
   isActive: boolean;
@@ -35,6 +36,7 @@ const EMPTY_INITIAL: ProductFormValue = {
   price: "",
   salePrice: null,
   stock: 0,
+  lowStockThreshold: null,
   thumbnail: "",
   images: [],
   isActive: true,
@@ -82,6 +84,7 @@ export default function ProductForm({ mode, initial, categories }: Props) {
       price: v.price,
       salePrice: typeof v.salePrice === "number" ? v.salePrice : null,
       stock: v.stock,
+      lowStockThreshold: typeof v.lowStockThreshold === "number" ? v.lowStockThreshold : null,
       thumbnail: v.thumbnail.trim() || null,
       images: v.images.filter((s) => s.trim()),
       isActive: v.isActive,
@@ -202,6 +205,15 @@ export default function ProductForm({ mode, initial, categories }: Props) {
                 />
               </Field>
             </div>
+            <Field label="재고 부족 임계치 (개별 설정)">
+              <input
+                type="number" min={0} className="input"
+                value={v.lowStockThreshold ?? ""}
+                placeholder="비워두면 글로벌 설정값 사용"
+                onChange={(e) => set("lowStockThreshold", e.target.value === "" ? null : Number(e.target.value))}
+              />
+              <p className="text-[11px] text-gray-400 mt-1">이 값 이하로 재고가 떨어지면 관리자 알림이 발송됩니다.</p>
+            </Field>
             {discountRate > 0 && (
               <div className="text-xs text-accent-500 mt-1 font-semibold">
                 할인 적용시: {discountRate}% 할인 → {formatKRW(finalPrice)}

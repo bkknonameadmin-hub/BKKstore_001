@@ -137,18 +137,67 @@ TOSS_SECRET_KEY=test_sk_docs_OaPz8L5KdmQXkzRz3y47BMw6
 - 테스트는 `dev-pub.apis.naver.com` 도메인 사용 (코드에 반영됨)
 - 운영 전환시 도메인을 `apis.naver.com` 으로 교체
 
+## 부가 기능 (구현 완료)
+
+### 다음 우편번호 검색
+- `src/components/AddressSearch.tsx` 컴포넌트
+- 카카오(다음) Postcode API — 무료, 키 발급 불필요
+- 체크아웃 페이지에서 자동 우편번호 + 도로명 주소 채움
+
+### 택배 추적 (스마트택배 / SweetTracker)
+- `src/lib/tracker.ts`, `/api/tracking?courier=...&invoice=...`
+- 관리자 주문 상세에서 자동 조회 + 새로고침
+- 고객 페이지 `/orders/[orderNo]/tracking` 에서도 조회
+- API 키: https://info.sweettracker.co.kr/apikey 에서 발급 → `.env`의 `SWEETTRACKER_API_KEY`
+
+### 상품 일괄 등록 (CSV)
+- `/admin/products/bulk`
+- 템플릿 다운로드 → 엑셀에서 작성 → UTF-8 CSV 저장 → 업로드
+- SKU가 이미 있으면 자동 수정, 없으면 신규 등록
+- 행별 검증 → 미리보기에서 오류 확인 → 일괄 처리
+
+### 매출 대시보드 (Recharts)
+- `/admin` 페이지 상단에 최근 30일 일별 매출(라인) + 주문수(바) 차트
+- 재고 부족 위젯 동시 표시
+
+### 재고 부족 알림 (이메일 + Slack)
+- 글로벌 임계치(`LOW_STOCK_THRESHOLD`) 또는 상품별 개별 임계치
+- 결제 완료 후 임계치 도달시 자동 알림 (비동기)
+- `/admin/stock` 에서 수동 일괄 알림 가능
+- Cron으로 호출하려면: `POST /api/admin/stock/check`, 헤더 `x-cron-token: ${NOTIFY_CRON_TOKEN}`
+
+## 운영 환경 추가 환경변수
+
+```bash
+# 스마트택배
+SWEETTRACKER_API_KEY=
+
+# 재고 알림
+LOW_STOCK_THRESHOLD=10
+ADMIN_NOTIFY_EMAIL=admin@example.com
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=...
+SMTP_PASSWORD=...     # Gmail은 앱 비밀번호 사용
+SMTP_FROM="낚시몰 <noreply@example.com>"
+
+# Slack (선택)
+SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
+
+# Cron 호출용 토큰
+NOTIFY_CRON_TOKEN=random-32-byte-string
+```
+
 ## 다음 단계로 추가하면 좋은 기능
 
-- [ ] 관리자(Admin) 페이지 - 상품/주문/회원 관리
 - [ ] 상품 옵션 (색상/사이즈 조합 SKU)
 - [ ] 쿠폰 / 적립금 시스템
 - [ ] 상품 리뷰 작성/평점
 - [ ] 위시리스트
 - [ ] 소셜 로그인 (네이버/카카오)
-- [ ] 주소 검색 API (도로명/지번)
-- [ ] 다음 우편번호 서비스 연동
-- [ ] 배송 추적 연동
-- [ ] 이메일/SMS 알림 (가입/주문/배송)
+- [ ] SMS 알림 (가입/주문/배송) — NHN Cloud SMS 또는 알리고
+- [ ] 카카오 알림톡 연동
+- [ ] 매출 정산 리포트 (월별 엑셀 다운로드)
 
 ## 라이선스
 

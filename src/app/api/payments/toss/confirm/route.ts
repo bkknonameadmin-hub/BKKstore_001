@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { finalizeOrderPayment } from "@/lib/stock";
 
 // 토스페이먼츠 successUrl 콜백
 // 클라이언트에서 결제 승인되면 paymentKey, orderId, amount 가 쿼리로 전달됨
@@ -37,20 +38,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(new URL(`/checkout/fail?reason=${encodeURIComponent(data.message || "")}`, req.url));
   }
 
-  // 3. 주문 상태 PAID 로 변경 + 재고 차감
-  await prisma.$transaction(async (tx) => {
-    await tx.order.update({
-      where: { id: order.id },
-      data: { status: "PAID", providerTxnId: paymentKey, paidAt: new Date() },
-    });
-    const items = await tx.orderItem.findMany({ where: { orderId: order.id } });
-    for (const it of items) {
-      await tx.product.update({
-        where: { id: it.productId },
-        data: { stock: { decrement: it.quantity } },
-      });
-    }
-  });
+  // 3. 주문 상태 PAID 로 변경 + 재고 차감 + 임계치 알림
+  await finalizeOrderPayment({ orderId: order.id, providerTxnId: paymentKey });
 
   return NextResponse.redirect(new URL(`/checkout/success?orderNo=${order.orderNo}`, req.url));
 }

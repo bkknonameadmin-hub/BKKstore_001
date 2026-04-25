@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { finalizeOrderPayment } from "@/lib/stock";
 
 // 네이버페이 결제 완료 후 returnUrl 콜백
 // resultCode=Success 인 경우 paymentId 로 승인 API 호출
@@ -43,16 +44,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(new URL("/checkout/fail?reason=금액불일치", req.url));
   }
 
-  await prisma.$transaction(async (tx) => {
-    await tx.order.update({
-      where: { id: order.id },
-      data: { status: "PAID", providerTxnId: paymentId, paidAt: new Date() },
-    });
-    const items = await tx.orderItem.findMany({ where: { orderId: order.id } });
-    for (const it of items) {
-      await tx.product.update({ where: { id: it.productId }, data: { stock: { decrement: it.quantity } } });
-    }
-  });
+  await finalizeOrderPayment({ orderId: order.id, providerTxnId: paymentId });
 
   return NextResponse.redirect(new URL(`/checkout/success?orderNo=${order.orderNo}`, req.url));
 }

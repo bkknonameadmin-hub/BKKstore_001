@@ -64,9 +64,19 @@ export default async function MyPage() {
                   </li>
                 ))}
               </ul>
-              <div className="mt-2 pt-2 border-t border-gray-100 flex justify-between text-sm">
+              <div className="mt-2 pt-2 border-t border-gray-100 flex justify-between items-center text-sm">
                 <span className="text-gray-500">결제수단: {o.provider || "-"}</span>
-                <span className="font-bold">총 {formatKRW(o.totalAmount)}</span>
+                <div className="flex items-center gap-3">
+                  {o.courier && o.trackingNo && (
+                    <Link
+                      href={`/orders/${o.orderNo}/tracking`}
+                      className="text-xs px-2 py-1 rounded border border-brand-300 text-brand-700 hover:bg-brand-50"
+                    >
+                      배송조회
+                    </Link>
+                  )}
+                  <span className="font-bold">총 {formatKRW(o.totalAmount)}</span>
+                </div>
               </div>
             </div>
           ))}

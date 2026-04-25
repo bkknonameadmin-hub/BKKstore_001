@@ -11,6 +11,7 @@ const CreateSchema = z.object({
   price: z.number().int().min(0),
   salePrice: z.number().int().min(0).nullable().optional(),
   stock: z.number().int().min(0),
+  lowStockThreshold: z.number().int().min(0).nullable().optional(),
   thumbnail: z.string().nullable().optional(),
   images: z.array(z.string()).default([]),
   isActive: z.boolean().default(true),

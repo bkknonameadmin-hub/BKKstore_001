@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useCart } from "@/store/cart";
 import { formatKRW } from "@/lib/utils";
+import AddressSearch from "@/components/AddressSearch";
 
 type Provider = "TOSS" | "INICIS" | "NAVERPAY";
 
@@ -134,11 +135,22 @@ export default function CheckoutPage() {
               </div>
               <div>
                 <label className="label">우편번호 *</label>
-                <input className="input" value={zipCode} onChange={(e) => setZipCode(e.target.value)} />
+                <div className="flex gap-2">
+                  <input
+                    className="input flex-1" value={zipCode} readOnly
+                    placeholder="우편번호 검색" onChange={(e) => setZipCode(e.target.value)}
+                  />
+                  <AddressSearch
+                    onSelect={({ zipCode: z, address1: a }) => {
+                      setZipCode(z);
+                      setAddress1(a);
+                    }}
+                  />
+                </div>
               </div>
               <div>
                 <label className="label">기본 주소 *</label>
-                <input className="input" value={address1} onChange={(e) => setAddress1(e.target.value)} />
+                <input className="input" value={address1} readOnly placeholder="우편번호 검색을 먼저 진행하세요" />
               </div>
               <div className="col-span-2">
                 <label className="label">상세 주소</label>

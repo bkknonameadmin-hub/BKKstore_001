@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { formatKRW } from "@/lib/utils";
 import { ORDER_STATUS_LABEL, ORDER_STATUS_COLOR } from "@/lib/order-status";
 import OrderActions from "./OrderActions";
+import TrackingViewer from "@/components/TrackingViewer";
 
 export const dynamic = "force-dynamic";
 
@@ -91,6 +92,13 @@ export default async function AdminOrderDetailPage({ params }: { params: { id: s
               <Row label="배송메모">{order.memo || "-"}</Row>
             </dl>
           </Section>
+
+          {/* 배송 추적 */}
+          {order.courier && order.trackingNo && (
+            <Section title="배송 추적">
+              <TrackingViewer courier={order.courier} invoice={order.trackingNo} />
+            </Section>
+          )}
 
           {/* 주문자 / 일시 */}
           <Section title="주문자 / 일시">

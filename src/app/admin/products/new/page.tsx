@@ -22,6 +22,7 @@ export default async function NewProductPage() {
     price: "",
     salePrice: null,
     stock: 0,
+    lowStockThreshold: null,
     thumbnail: "",
     images: [],
     isActive: true,

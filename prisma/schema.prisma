@@ -54,6 +54,7 @@ model Product {
   price       Int
   salePrice   Int?
   stock       Int      @default(0)
+  lowStockThreshold Int? // null이면 글로벌 LOW_STOCK_THRESHOLD 사용
   thumbnail   String?
   images      String[] @default([])
   isActive    Boolean  @default(true)

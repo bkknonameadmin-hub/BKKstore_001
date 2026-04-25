@@ -8,6 +8,7 @@ const NAV = [
   { href: "/admin", label: "대시보드", icon: "📊" },
   { href: "/admin/products", label: "상품 관리", icon: "📦" },
   { href: "/admin/orders", label: "주문 관리", icon: "🧾" },
+  { href: "/admin/stock", label: "재고 관리", icon: "📉" },
   { href: "/admin/categories", label: "카테고리", icon: "🗂️" },
   { href: "/admin/users", label: "회원 관리", icon: "👤" },
 ];
