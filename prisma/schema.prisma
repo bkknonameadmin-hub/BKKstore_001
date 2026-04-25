@@ -1,0 +1,138 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  phone        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  addresses Address[]
+  orders    Order[]
+  reviews   Review[]
+}
+
+model Address {
+  id        String  @id @default(cuid())
+  userId    String
+  recipient String
+  phone     String
+  zipCode   String
+  address1  String
+  address2  String?
+  isDefault Boolean @default(false)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Category {
+  id       String     @id @default(cuid())
+  slug     String     @unique
+  name     String
+  parentId String?
+  parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children Category[] @relation("CategoryTree")
+  sortOrder Int       @default(0)
+  products Product[]
+}
+
+model Product {
+  id          String   @id @default(cuid())
+  sku         String   @unique
+  name        String
+  brand       String?
+  description String?
+  price       Int
+  salePrice   Int?
+  stock       Int      @default(0)
+  thumbnail   String?
+  images      String[] @default([])
+  isActive    Boolean  @default(true)
+  isFeatured  Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id])
+
+  orderItems OrderItem[]
+  reviews    Review[]
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  PREPARING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentProvider {
+  TOSS
+  INICIS
+  NAVERPAY
+}
+
+model Order {
+  id              String          @id @default(cuid())
+  orderNo         String          @unique
+  userId          String?
+  user            User?           @relation(fields: [userId], references: [id])
+  status          OrderStatus     @default(PENDING)
+  totalAmount     Int
+  shippingFee     Int             @default(0)
+  recipient       String
+  phone           String
+  zipCode         String
+  address1        String
+  address2        String?
+  memo            String?
+  provider        PaymentProvider?
+  providerTxnId   String?
+  paidAt          DateTime?
+  shippedAt       DateTime?
+  deliveredAt     DateTime?
+  cancelledAt     DateTime?
+  courier         String?         // 택배사 (CJ대한통운 등)
+  trackingNo      String?         // 송장번호
+  adminMemo       String?         // 관리자 내부 메모
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  items OrderItem[]
+}
+
+model OrderItem {
+  id        String  @id @default(cuid())
+  orderId   String
+  productId String
+  name      String
+  price     Int
+  quantity  Int
+
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+}
+
+model Review {
+  id        String   @id @default(cuid())
+  userId    String
+  productId String
+  rating    Int
+  content   String
+  createdAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+}
