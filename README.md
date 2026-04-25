@@ -150,11 +150,15 @@ TOSS_SECRET_KEY=test_sk_docs_OaPz8L5KdmQXkzRz3y47BMw6
 - 고객 페이지 `/orders/[orderNo]/tracking` 에서도 조회
 - API 키: https://info.sweettracker.co.kr/apikey 에서 발급 → `.env`의 `SWEETTRACKER_API_KEY`
 
-### 상품 일괄 등록 (CSV)
+### 상품 일괄 등록 (엑셀 / CSV)
 - `/admin/products/bulk`
-- 템플릿 다운로드 → 엑셀에서 작성 → UTF-8 CSV 저장 → 업로드
-- SKU가 이미 있으면 자동 수정, 없으면 신규 등록
-- 행별 검증 → 미리보기에서 오류 확인 → 일괄 처리
+- **엑셀(.xlsx)** 과 **CSV** 양쪽 모두 지원
+- **3-시트 엑셀 템플릿** 다운로드: 안내 / 상품등록 / 카테고리목록
+- 한글 컬럼 헤더(상품명, 판매가 등) 또는 영문 키(name, price 등) **모두 인식**
+- SKU(상품코드)가 이미 있으면 자동 수정, 없으면 신규 등록
+- 행별 검증 → 미리보기에서 신규/수정/오류 색상 구분 → 일괄 처리
+- 검증 실패행만 모아서 별도 엑셀로 다운로드 가능 (수정 후 재업로드)
+- 한 번에 최대 2,000행 처리
 
 ### 매출 대시보드 (Recharts)
 - `/admin` 페이지 상단에 최근 30일 일별 매출(라인) + 주문수(바) 차트

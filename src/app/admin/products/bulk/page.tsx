@@ -20,8 +20,11 @@ export default async function BulkProductPage() {
         <span className="text-gray-700">일괄 등록</span>
       </nav>
 
-      <h1 className="text-xl font-bold">상품 일괄 등록 (CSV)</h1>
-      <p className="text-sm text-gray-500">CSV 파일을 업로드하여 한 번에 여러 상품을 등록하거나 수정할 수 있습니다.</p>
+      <h1 className="text-xl font-bold">상품 일괄 등록 (엑셀 / CSV)</h1>
+      <p className="text-sm text-gray-500">
+        엑셀(.xlsx) 또는 CSV 파일을 업로드하여 한 번에 여러 상품을 등록하거나 수정할 수 있습니다.
+        한글/영문 컬럼 헤더를 모두 인식하며, 상품코드(SKU)가 이미 존재하면 자동으로 수정됩니다.
+      </p>
 
       <BulkUploader categories={categories} />
     </div>

@@ -49,7 +49,7 @@ export default async function AdminProductsPage({ searchParams }: { searchParams
           <p className="text-xs text-gray-500 mt-1">총 {total.toLocaleString()}개</p>
         </div>
         <div className="flex gap-2">
-          <Link href="/admin/products/bulk" className="btn-outline text-sm">📥 CSV 일괄 등록</Link>
+          <Link href="/admin/products/bulk" className="btn-outline text-sm">📊 엑셀/CSV 일괄 등록</Link>
           <Link href="/admin/products/new" className="btn-primary text-sm">+ 상품 등록</Link>
         </div>
       </div>
