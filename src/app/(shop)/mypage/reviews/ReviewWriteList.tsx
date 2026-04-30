@@ -60,8 +60,37 @@ function ReviewWriteForm({
   const router = useRouter();
   const [rating, setRating] = useState(5);
   const [content, setContent] = useState("");
+  const [images, setImages] = useState<string[]>([]);
+  const [uploading, setUploading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
+
+  const onFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    if (images.length + files.length > 5) {
+      alert("최대 5장까지 업로드할 수 있습니다.");
+      return;
+    }
+    setUploading(true);
+    try {
+      const uploaded: string[] = [];
+      for (const f of Array.from(files)) {
+        const fd = new FormData();
+        fd.append("file", f);
+        const res = await fetch("/api/reviews/upload", { method: "POST", body: fd });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "업로드 실패");
+        uploaded.push(data.url);
+      }
+      setImages((prev) => [...prev, ...uploaded]);
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setUploading(false);
+      e.target.value = "";
+    }
+  };
 
   const submit = async () => {
     setErr("");
@@ -71,7 +100,7 @@ function ReviewWriteForm({
       const res = await fetch("/api/reviews", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderItemId, productId, rating, content: content.trim() }),
+        body: JSON.stringify({ orderItemId, productId, rating, content: content.trim(), images }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "작성 실패");
@@ -109,6 +138,35 @@ function ReviewWriteForm({
         />
         <div className="text-[11px] text-gray-400 mt-1 text-right">{content.length} / 2000</div>
       </div>
+
+      <div>
+        <label className="label">사진 첨부 (선택, 최대 5장)</label>
+        <div className="flex flex-wrap gap-2 items-start">
+          {images.map((src, i) => (
+            <div key={i} className="relative w-20 h-20 rounded border border-gray-200 overflow-hidden bg-gray-100">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={src} alt="" className="w-full h-full object-cover" />
+              <button
+                type="button"
+                onClick={() => setImages((prev) => prev.filter((_, idx) => idx !== i))}
+                className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-500 text-white text-xs"
+                title="삭제"
+              >×</button>
+            </div>
+          ))}
+          {images.length < 5 && (
+            <label className="w-20 h-20 rounded border border-dashed border-gray-300 flex items-center justify-center cursor-pointer hover:border-brand-500 hover:bg-brand-50 text-xs text-gray-500">
+              {uploading ? "업로드..." : "+ 추가"}
+              <input
+                type="file" accept="image/*" multiple hidden
+                onChange={onFile} disabled={uploading}
+              />
+            </label>
+          )}
+        </div>
+        <p className="text-[11px] text-gray-400 mt-1">JPEG/PNG/WebP, 최대 8MB · 부적절한 사진은 관리자가 숨길 수 있습니다.</p>
+      </div>
+
       {err && <p className="text-xs text-red-500">{err}</p>}
       <div className="flex justify-end gap-2">
         <button type="button" onClick={onClose} className="btn-outline text-xs h-9">취소</button>

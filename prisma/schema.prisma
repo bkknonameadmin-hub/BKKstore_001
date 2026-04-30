@@ -8,15 +8,18 @@ datasource db {
 }
 
 model User {
-  id            String    @id @default(cuid())
-  email         String    @unique
-  passwordHash  String
-  name          String
-  phone         String?
-  pointBalance  Int       @default(0)
+  id                String    @id @default(cuid())
+  email             String    @unique
+  emailVerified     DateTime?
+  image             String?
+  passwordHash      String?                       // 소셜로그인 회원은 null
+  name              String
+  phone             String?
+  phoneVerifiedAt   DateTime?                     // 휴대폰 인증 시각
+  pointBalance      Int       @default(0)
   passwordChangedAt DateTime?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   addresses    Address[]
   orders       Order[]
@@ -25,6 +28,62 @@ model User {
   userCoupons  UserCoupon[]
   pointHistory PointHistory[]
   loginLogs    LoginLog[]
+  accounts     Account[]
+  sessions     Session[]
+}
+
+/// NextAuth: OAuth 계정 연결 (네이버/카카오 등)
+model Account {
+  id                 String  @id @default(cuid())
+  userId             String
+  type               String                          // oauth, email 등
+  provider           String                          // naver, kakao, credentials
+  providerAccountId  String
+  refresh_token      String? @db.Text
+  access_token       String? @db.Text
+  expires_at         Int?
+  token_type         String?
+  scope              String?
+  id_token           String? @db.Text
+  session_state      String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+/// NextAuth 세션 (DB 세션 미사용이지만 Adapter 호환을 위해 정의)
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// NextAuth: 이메일 인증 등 임시 토큰
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+/// 휴대폰 인증 코드 (6자리)
+model PhoneVerification {
+  id         String   @id @default(cuid())
+  phone      String                                 // 정규화된 번호 (예: 01012345678)
+  codeHash   String                                 // SHA-256 해시
+  expiresAt  DateTime
+  attempts   Int      @default(0)
+  consumedAt DateTime?
+  ip         String?
+  userId     String?                                // 인증 요청 회원 (있으면)
+  createdAt  DateTime @default(now())
+
+  @@index([phone, createdAt])
+  @@index([expiresAt])
 }
 
 model Address {

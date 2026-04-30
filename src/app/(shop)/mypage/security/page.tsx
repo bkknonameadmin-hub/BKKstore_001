@@ -4,6 +4,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import ChangePasswordForm from "./ChangePasswordForm";
+import PhoneVerifySection from "./PhoneVerifySection";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +16,7 @@ export default async function SecurityPage() {
   const [user, logs] = await Promise.all([
     prisma.user.findUnique({
       where: { id: userId },
-      select: { email: true, passwordChangedAt: true, createdAt: true },
+      select: { email: true, phone: true, phoneVerifiedAt: true, passwordChangedAt: true, createdAt: true },
     }),
     prisma.loginLog.findMany({
       where: { userId },
@@ -50,6 +51,21 @@ export default async function SecurityPage() {
             <dd>{user.passwordChangedAt ? user.passwordChangedAt.toLocaleString("ko-KR") : "변경 이력 없음"}</dd>
           </div>
         </dl>
+      </section>
+
+      {/* 휴대폰 인증 */}
+      <section className="border border-gray-200 rounded p-5 bg-white">
+        <h2 className="font-bold text-sm pb-3 mb-3 border-b border-gray-100 flex items-center justify-between">
+          <span>휴대폰 인증</span>
+          {user.phoneVerifiedAt && (
+            <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 text-[11px] font-bold">인증 완료</span>
+          )}
+        </h2>
+        <PhoneVerifySection
+          currentPhone={user.phone}
+          verified={!!user.phoneVerifiedAt}
+          verifiedAt={user.phoneVerifiedAt?.toISOString() || null}
+        />
       </section>
 
       {/* 비밀번호 변경 */}

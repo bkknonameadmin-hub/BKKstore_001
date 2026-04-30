@@ -240,16 +240,54 @@ NOTIFY_CRON_TOKEN=random-32-byte-string
 | 결제 위변조 | DB 금액 ↔ PG 승인금액 검증, 트랜잭션 처리, 망취소 |
 | 약관 동의 | 회원가입시 이용약관/개인정보처리방침 명시 동의 |
 
+## 회원 기능 (v4 추가)
+
+### 휴대폰 인증 (SMS)
+- `/mypage/security` 에서 휴대폰 번호 인증 가능
+- 6자리 OTP, 5분 유효 / 1시간 5회 발급 제한 / 60초 재발송 쿨다운 / 5회 시도 제한
+- SMS 코드는 SHA-256 해시로 저장 (평문 미저장)
+- 알리고(Aligo) API 기본 지원, 환경변수 미설정시 개발용 콘솔 모드
+- 인증 완료시 `User.phoneVerifiedAt` 저장
+
+### 소셜 로그인 (네이버 / 카카오)
+- NextAuth + `@next-auth/prisma-adapter`
+- 동일 이메일 자동 계정 연결 (Adapter)
+- 소셜 가입자에게도 가입 축하 적립금 1,000원 자동 지급
+- 환경변수 설정시 자동으로 로그인 페이지에 버튼 노출
+
+### 리뷰 사진 업로드
+- 리뷰 작성 폼에 최대 5장 사진 첨부
+- JPEG/PNG/WebP/HEIC, 8MB 이하
+- 회원만 업로드 가능 + 분당 30회 레이트 리밋
+- `/uploads/reviews/` 디렉토리에 저장 (운영시 S3/R2 등으로 교체)
+
+## 운영 환경 추가 환경변수
+
+```bash
+# 알리고 SMS (선택, 미설정시 콘솔 모드)
+ALIGO_API_KEY=
+ALIGO_USER_ID=
+ALIGO_SENDER=01012345678   # 사전등록된 발신번호
+
+# 네이버 로그인
+NAVER_CLIENT_ID=
+NAVER_CLIENT_SECRET=
+# 콜백 URL: {NEXTAUTH_URL}/api/auth/callback/naver
+
+# 카카오 로그인
+KAKAO_CLIENT_ID=
+KAKAO_CLIENT_SECRET=
+# Redirect URI: {NEXTAUTH_URL}/api/auth/callback/kakao
+```
+
 ## 다음 단계로 추가하면 좋은 기능
 
-- [ ] 2단계 인증 (TOTP / OTP)
-- [ ] 이메일/휴대폰 인증
-- [ ] 소셜 로그인 (네이버/카카오)
-- [ ] SMS 알림 (가입/주문/배송) — NHN Cloud SMS 또는 알리고
-- [ ] 카카오 알림톡 연동
+- [ ] 2단계 인증 (TOTP / OTP App)
+- [ ] 이메일 인증 (가입시)
+- [ ] 카카오 알림톡 연동 (주문/배송)
 - [ ] 매출 정산 리포트 (월별 엑셀 다운로드)
-- [ ] 사이즈 옵션 (색상 + 사이즈 조합)
-- [ ] 리뷰 사진 업로드
+- [ ] 사이즈 옵션 (색상 + 사이즈 조합 SKU)
+- [ ] 비밀번호 재설정 (휴대폰 인증 기반)
 
 ## 라이선스
 
