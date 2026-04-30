@@ -1,18 +1,46 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { calcDiscountRate, formatKRW } from "@/lib/utils";
 import AddToCartSection from "./AddToCartSection";
+import WishlistButton from "@/components/WishlistButton";
+import ProductReviewSection from "@/components/ProductReviewSection";
 
 export default async function ProductDetailPage({ params }: { params: { id: string } }) {
+  const session = await getServerSession(authOptions);
+  const userId = (session?.user as any)?.id as string | undefined;
+
   const product = await prisma.product
-    .findUnique({ where: { id: params.id }, include: { category: true } })
+    .findUnique({
+      where: { id: params.id },
+      include: {
+        category: true,
+        variants: {
+          where: { isActive: true },
+          orderBy: { sortOrder: "asc" },
+        },
+      },
+    })
     .catch(() => null);
 
   if (!product || !product.isActive) notFound();
 
   const finalPrice = product.salePrice ?? product.price;
   const discount = calcDiscountRate(product.price, product.salePrice);
+
+  // 위시리스트 여부
+  const inWishlist = userId
+    ? !!(await prisma.wishlist.findUnique({ where: { userId_productId: { userId, productId: product.id } } }).catch(() => null))
+    : false;
+
+  // 평점 집계
+  const ratingAgg = await prisma.review.aggregate({
+    where: { productId: product.id, isHidden: false },
+    _avg: { rating: true },
+    _count: { rating: true },
+  }).catch(() => ({ _avg: { rating: null }, _count: { rating: 0 } }));
 
   return (
     <div className="container-mall py-6">
@@ -47,8 +75,22 @@ export default async function ProductDetailPage({ params }: { params: { id: stri
 
         {/* 상품 정보 */}
         <div>
-          {product.brand && <div className="text-sm text-gray-500">{product.brand}</div>}
-          <h1 className="text-2xl font-bold mt-1">{product.name}</h1>
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex-1">
+              {product.brand && <div className="text-sm text-gray-500">{product.brand}</div>}
+              <h1 className="text-2xl font-bold mt-1">{product.name}</h1>
+            </div>
+            <WishlistButton productId={product.id} initialActive={inWishlist} signedIn={!!userId} />
+          </div>
+
+          {/* 평점 요약 */}
+          {ratingAgg._count.rating > 0 && (
+            <div className="mt-2 flex items-center gap-2 text-sm">
+              <Stars value={ratingAgg._avg.rating || 0} />
+              <span className="font-bold">{(ratingAgg._avg.rating || 0).toFixed(1)}</span>
+              <span className="text-gray-500">리뷰 {ratingAgg._count.rating}개</span>
+            </div>
+          )}
 
           <div className="mt-4 pb-4 border-b border-gray-200">
             {discount > 0 && (
@@ -71,8 +113,10 @@ export default async function ProductDetailPage({ params }: { params: { id: stri
             </div>
             <div className="flex">
               <dt className="w-24 text-gray-500">재고</dt>
-              <dd className={product.stock > 0 ? "text-gray-700" : "text-red-500"}>
-                {product.stock > 0 ? `${product.stock}개 보유` : "품절"}
+              <dd className={(product.variants.length > 0 || product.stock > 0) ? "text-gray-700" : "text-red-500"}>
+                {product.variants.length > 0
+                  ? `옵션별 재고 — 총 ${product.variants.reduce((s, v) => s + v.stock, 0)}개`
+                  : product.stock > 0 ? `${product.stock}개 보유` : "품절"}
               </dd>
             </div>
           </dl>
@@ -85,6 +129,15 @@ export default async function ProductDetailPage({ params }: { params: { id: stri
               thumbnail: product.thumbnail,
               stock: product.stock,
             }}
+            variants={product.variants.map((v) => ({
+              id: v.id,
+              name: v.name,
+              colorHex: v.colorHex,
+              optionType: v.optionType,
+              stock: v.stock,
+              priceModifier: v.priceModifier,
+              thumbnail: v.thumbnail,
+            }))}
           />
         </div>
       </div>
@@ -98,6 +151,19 @@ export default async function ProductDetailPage({ params }: { params: { id: stri
           {product.description || "상세 설명이 등록되지 않았습니다."}
         </div>
       </section>
+
+      {/* 리뷰 섹션 */}
+      <ProductReviewSection productId={product.id} />
     </div>
+  );
+}
+
+function Stars({ value }: { value: number }) {
+  return (
+    <span className="text-amber-400 tracking-tight">
+      {[1, 2, 3, 4, 5].map((n) => (
+        <span key={n}>{value >= n ? "★" : value >= n - 0.5 ? "☆" : "☆"}</span>
+      ))}
+    </span>
   );
 }

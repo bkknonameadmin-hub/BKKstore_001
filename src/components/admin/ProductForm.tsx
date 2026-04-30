@@ -2,6 +2,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { calcDiscountRate, formatKRW } from "@/lib/utils";
+import VariantEditor, { type VariantRow } from "@/components/admin/VariantEditor";
 
 export type ProductFormValue = {
   id?: string;
@@ -18,6 +19,7 @@ export type ProductFormValue = {
   isActive: boolean;
   isFeatured: boolean;
   categoryId: string;
+  variants: VariantRow[];
 };
 
 type Category = { id: string; name: string; slug: string; parentId: string | null };
@@ -42,6 +44,7 @@ const EMPTY_INITIAL: ProductFormValue = {
   isActive: true,
   isFeatured: false,
   categoryId: "",
+  variants: [],
 };
 
 export default function ProductForm({ mode, initial, categories }: Props) {
@@ -76,6 +79,22 @@ export default function ProductForm({ mode, initial, categories }: Props) {
     if (e1) { setErr(e1); window.scrollTo({ top: 0, behavior: "smooth" }); return; }
     setErr(""); setLoading(true);
 
+    // 옵션 검증
+    const validVariants: any[] = [];
+    for (const vr of v.variants) {
+      if (!vr.name.trim()) { setErr("옵션명을 모두 입력하세요."); setLoading(false); return; }
+      if (typeof vr.stock !== "number" || vr.stock < 0) { setErr(`옵션 "${vr.name}"의 재고를 올바르게 입력하세요.`); setLoading(false); return; }
+      validVariants.push({
+        id: vr.id,
+        name: vr.name.trim(),
+        colorHex: vr.colorHex,
+        stock: vr.stock,
+        priceModifier: typeof vr.priceModifier === "number" ? vr.priceModifier : 0,
+        sortOrder: vr.sortOrder,
+        isActive: vr.isActive,
+      });
+    }
+
     const payload = {
       sku: v.sku.trim(),
       name: v.name.trim(),
@@ -90,6 +109,7 @@ export default function ProductForm({ mode, initial, categories }: Props) {
       isActive: v.isActive,
       isFeatured: v.isFeatured,
       categoryId: v.categoryId,
+      variants: validVariants,
     };
 
     try {
@@ -219,6 +239,17 @@ export default function ProductForm({ mode, initial, categories }: Props) {
                 할인 적용시: {discountRate}% 할인 → {formatKRW(finalPrice)}
               </div>
             )}
+          </Section>
+
+          {/* 옵션 (색상별 재고) */}
+          <Section title="옵션 (색상별 재고)">
+            <p className="text-xs text-gray-500 -mt-1 mb-2">
+              옵션이 1개 이상 등록되면 위의 "재고" 값은 무시되고 옵션별 재고로 판매됩니다.
+            </p>
+            <VariantEditor
+              variants={v.variants}
+              onChange={(next) => set("variants", next)}
+            />
           </Section>
 
           {/* 상품 설명 */}

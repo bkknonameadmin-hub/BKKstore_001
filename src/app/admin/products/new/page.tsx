@@ -28,6 +28,7 @@ export default async function NewProductPage() {
     isActive: true,
     isFeatured: false,
     categoryId: "",
+    variants: [],
   };
 
   return (

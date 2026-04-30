@@ -1,62 +1,141 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { generateOrderNo } from "@/lib/utils";
+import { calcCouponDiscount, validateCouponForOrder } from "@/lib/coupon";
 
 const Schema = z.object({
   items: z.array(z.object({
     productId: z.string(),
+    variantId: z.string().nullable().optional(),
     quantity: z.number().int().min(1),
   })).min(1),
-  recipient: z.string().min(1),
-  phone: z.string().min(1),
-  zipCode: z.string().min(1),
-  address1: z.string().min(1),
-  address2: z.string().optional(),
-  memo: z.string().optional(),
+  recipient: z.string().min(1).max(60),
+  phone: z.string().min(1).max(20),
+  zipCode: z.string().min(1).max(10),
+  address1: z.string().min(1).max(200),
+  address2: z.string().max(200).optional(),
+  memo: z.string().max(300).optional(),
   provider: z.enum(["TOSS", "INICIS", "NAVERPAY"]),
+  userCouponId: z.string().nullable().optional(),
+  pointUsed: z.number().int().min(0).optional(),
 });
 
 export async function POST(req: NextRequest) {
   try {
+    const session = await getServerSession(authOptions);
+    const userId = (session?.user as any)?.id as string | undefined;
+
     const body = await req.json();
     const data = Schema.parse(body);
 
-    // 서버 측에서 가격을 다시 계산 (신뢰할 수 있는 금액 확보)
+    // 상품 + 옵션 일괄 조회
     const productIds = data.items.map((i) => i.productId);
-    const products = await prisma.product.findMany({ where: { id: { in: productIds }, isActive: true } });
+    const variantIds = data.items.map((i) => i.variantId).filter(Boolean) as string[];
 
-    if (products.length !== productIds.length) {
+    const [products, variants] = await Promise.all([
+      prisma.product.findMany({ where: { id: { in: productIds }, isActive: true } }),
+      variantIds.length
+        ? prisma.productVariant.findMany({ where: { id: { in: variantIds }, isActive: true } })
+        : Promise.resolve([]),
+    ]);
+
+    if (products.length !== new Set(productIds).size) {
       return NextResponse.json({ error: "유효하지 않은 상품이 포함되어 있습니다." }, { status: 400 });
     }
 
-    let subtotal = 0;
-    const orderItemsData = data.items.map((it) => {
-      const p = products.find((x) => x.id === it.productId)!;
-      const unitPrice = p.salePrice ?? p.price;
-      if (p.stock < it.quantity) throw new Error(`${p.name} 재고가 부족합니다.`);
-      subtotal += unitPrice * it.quantity;
-      return { productId: p.id, name: p.name, price: unitPrice, quantity: it.quantity };
-    });
+    let itemsAmount = 0;
+    const orderItemsData: any[] = [];
 
-    const shippingFee = subtotal >= 50000 ? 0 : 3000;
-    const totalAmount = subtotal + shippingFee;
+    for (const it of data.items) {
+      const p = products.find((x) => x.id === it.productId);
+      if (!p) throw new Error("상품을 찾을 수 없습니다.");
 
-    const order = await prisma.order.create({
-      data: {
-        orderNo: generateOrderNo(),
-        status: "PENDING",
-        totalAmount,
-        shippingFee,
-        recipient: data.recipient,
-        phone: data.phone,
-        zipCode: data.zipCode,
-        address1: data.address1,
-        address2: data.address2,
-        memo: data.memo,
-        provider: data.provider,
-        items: { create: orderItemsData },
-      },
+      const basePrice = p.salePrice ?? p.price;
+
+      if (it.variantId) {
+        const v = variants.find((x) => x.id === it.variantId && x.productId === p.id);
+        if (!v) throw new Error(`${p.name} 옵션을 찾을 수 없습니다.`);
+        if (v.stock < it.quantity) throw new Error(`${p.name} - ${v.name} 재고가 부족합니다.`);
+        const unit = basePrice + v.priceModifier;
+        itemsAmount += unit * it.quantity;
+        orderItemsData.push({
+          productId: p.id, variantId: v.id, name: p.name, variantName: v.name, price: unit, quantity: it.quantity,
+        });
+      } else {
+        if (p.stock < it.quantity) throw new Error(`${p.name} 재고가 부족합니다.`);
+        itemsAmount += basePrice * it.quantity;
+        orderItemsData.push({
+          productId: p.id, variantId: null, name: p.name, variantName: null, price: basePrice, quantity: it.quantity,
+        });
+      }
+    }
+
+    const shippingFee = itemsAmount >= 50000 ? 0 : 3000;
+
+    // 쿠폰 적용
+    let couponId: string | null = null;
+    let couponDiscount = 0;
+    if (data.userCouponId && userId) {
+      const userCoupon = await prisma.userCoupon.findUnique({
+        where: { id: data.userCouponId },
+        include: { coupon: true },
+      });
+      const v = validateCouponForOrder(userCoupon, userId, itemsAmount);
+      if (!v.ok) return NextResponse.json({ error: v.error }, { status: 400 });
+      couponDiscount = calcCouponDiscount(userCoupon!.coupon, itemsAmount);
+      couponId = userCoupon!.couponId;
+    }
+
+    // 적립금 사용
+    let pointUsed = 0;
+    if (data.pointUsed && data.pointUsed > 0) {
+      if (!userId) return NextResponse.json({ error: "적립금 사용은 회원만 가능합니다." }, { status: 401 });
+      const user = await prisma.user.findUnique({ where: { id: userId }, select: { pointBalance: true } });
+      if (!user) return NextResponse.json({ error: "회원 정보를 찾을 수 없습니다." }, { status: 404 });
+      if (data.pointUsed > user.pointBalance) {
+        return NextResponse.json({ error: "보유 적립금을 초과했습니다." }, { status: 400 });
+      }
+      // 사용 가능한 최대 적립금 = (상품금액 - 쿠폰할인)의 100% 까지 (정책에 맞게 조정 가능)
+      const maxUsable = Math.max(0, itemsAmount - couponDiscount);
+      pointUsed = Math.min(data.pointUsed, maxUsable);
+    }
+
+    const totalAmount = Math.max(0, itemsAmount - couponDiscount - pointUsed + shippingFee);
+
+    // 적립 예정금액 (1%)
+    const POINT_EARN_RATE = parseFloat(process.env.POINT_EARN_RATE || "0.01");
+    const pointEarned = Math.floor((itemsAmount - couponDiscount - pointUsed) * POINT_EARN_RATE / 10) * 10; // 10원 단위 절삭
+
+    const order = await prisma.$transaction(async (tx) => {
+      const o = await tx.order.create({
+        data: {
+          orderNo: generateOrderNo(),
+          userId: userId || null,
+          status: "PENDING",
+          itemsAmount,
+          shippingFee,
+          couponDiscount,
+          pointUsed,
+          pointEarned,
+          totalAmount,
+          recipient: data.recipient,
+          phone: data.phone,
+          zipCode: data.zipCode,
+          address1: data.address1,
+          address2: data.address2 || null,
+          memo: data.memo || null,
+          provider: data.provider,
+          couponId: couponId,
+          items: { create: orderItemsData },
+        },
+      });
+
+      // 적립금 사용은 결제완료 시점에 실제 차감 (PENDING 단계에서는 예약만)
+      // 쿠폰 사용도 결제완료 시점에 처리
+      return o;
     });
 
     return NextResponse.json({
@@ -65,6 +144,7 @@ export async function POST(req: NextRequest) {
       totalAmount: order.totalAmount,
     });
   } catch (e: any) {
+    if (e?.issues) return NextResponse.json({ error: e.issues[0]?.message || "유효성 오류" }, { status: 400 });
     return NextResponse.json({ error: e.message || "주문 생성 실패" }, { status: 400 });
   }
 }

@@ -1,17 +1,37 @@
 import Link from "next/link";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+import { isAdminEmail } from "@/lib/admin-guard";
 import CategoryNav from "./CategoryNav";
 import CartBadge from "./CartBadge";
+import HeaderSignOut from "./HeaderSignOut";
 
-export default function Header() {
+export default async function Header() {
+  const session = await getServerSession(authOptions);
+  const user = session?.user;
+  const admin = isAdminEmail(user?.email);
+
   return (
     <header className="border-b border-gray-200 bg-white sticky top-0 z-40">
       {/* 상단 유틸 바 */}
       <div className="border-b border-gray-100 text-xs text-gray-600">
         <div className="container-mall flex items-center justify-end h-9 gap-4">
-          <Link href="/login" className="hover:text-brand-600">로그인</Link>
-          <Link href="/register" className="hover:text-brand-600">회원가입</Link>
-          <Link href="/orders" className="hover:text-brand-600">주문조회</Link>
-          <Link href="/mypage" className="hover:text-brand-600">마이페이지</Link>
+          {user ? (
+            <>
+              <span className="text-gray-700"><b>{user.name}</b>님</span>
+              <HeaderSignOut />
+              <Link href="/mypage" className="hover:text-brand-600">마이페이지</Link>
+              <Link href="/mypage/wishlist" className="hover:text-brand-600">위시리스트</Link>
+              <Link href="/mypage/coupons" className="hover:text-brand-600">쿠폰함</Link>
+              {admin && <Link href="/admin" className="text-purple-600 hover:text-purple-800 font-bold">관리자</Link>}
+            </>
+          ) : (
+            <>
+              <Link href="/login" className="hover:text-brand-600">로그인</Link>
+              <Link href="/register" className="hover:text-brand-600">회원가입</Link>
+              <Link href="/mypage" className="hover:text-brand-600">주문조회</Link>
+            </>
+          )}
           <Link href="/support" className="hover:text-brand-600">고객센터</Link>
         </div>
       </div>

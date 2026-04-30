@@ -2,9 +2,12 @@ import { prisma } from "@/lib/prisma";
 import { getLowStockThreshold, notifyAdmin } from "@/lib/notify";
 
 /**
- * 주문 결제 완료 시 호출.
- * 1) 트랜잭션으로 재고 차감 + 주문 상태 PAID 처리
- * 2) 차감 후 임계치 이하로 떨어진 상품이 있으면 비동기로 알림 발송 (실패해도 결제는 완료)
+ * 주문 결제 완료 처리:
+ * - 주문 상태 PAID
+ * - 옵션(variant) 또는 상품 재고 차감
+ * - 쿠폰 사용 마킹
+ * - 적립금 사용 차감 + 적립 적립
+ * - 임계치 알림 (비동기)
  */
 export async function finalizeOrderPayment(args: {
   orderId: string;
@@ -12,23 +15,88 @@ export async function finalizeOrderPayment(args: {
 }): Promise<void> {
   const { orderId, providerTxnId } = args;
 
-  const items = await prisma.$transaction(async (tx) => {
-    await tx.order.update({
+  const productIdsForCheck = await prisma.$transaction(async (tx) => {
+    const order = await tx.order.findUnique({
       where: { id: orderId },
+      include: { items: true, coupon: true },
+    });
+    if (!order) throw new Error("주문을 찾을 수 없습니다.");
+    if (order.status !== "PENDING") return [] as string[];
+
+    // 1) 주문 상태 변경
+    await tx.order.update({
+      where: { id: order.id },
       data: { status: "PAID", providerTxnId, paidAt: new Date() },
     });
-    const its = await tx.orderItem.findMany({ where: { orderId } });
-    for (const it of its) {
-      await tx.product.update({
-        where: { id: it.productId },
-        data: { stock: { decrement: it.quantity } },
+
+    // 2) 재고 차감 (옵션이 있으면 옵션, 없으면 상품)
+    const productIds: string[] = [];
+    for (const it of order.items) {
+      if (it.variantId) {
+        await tx.productVariant.update({
+          where: { id: it.variantId },
+          data: { stock: { decrement: it.quantity } },
+        });
+      } else {
+        await tx.product.update({
+          where: { id: it.productId },
+          data: { stock: { decrement: it.quantity } },
+        });
+      }
+      productIds.push(it.productId);
+    }
+
+    // 3) 쿠폰 사용 마킹
+    if (order.couponId && order.userId) {
+      await tx.userCoupon.updateMany({
+        where: { userId: order.userId, couponId: order.couponId, usedAt: null },
+        data: { usedAt: new Date(), orderId: order.id },
+      });
+      await tx.coupon.update({
+        where: { id: order.couponId },
+        data: { usedCount: { increment: 1 } },
       });
     }
-    return its;
+
+    // 4) 적립금 사용 차감
+    if (order.userId && order.pointUsed > 0) {
+      await tx.user.update({
+        where: { id: order.userId },
+        data: { pointBalance: { decrement: order.pointUsed } },
+      });
+      await tx.pointHistory.create({
+        data: {
+          userId: order.userId,
+          amount: -order.pointUsed,
+          reason: "주문 적립금 사용",
+          orderId: order.id,
+        },
+      });
+    }
+
+    // 5) 적립금 적립 (배송완료 시점이 일반적이지만 단순화를 위해 결제 즉시)
+    if (order.userId && order.pointEarned > 0) {
+      const expiresAt = new Date();
+      expiresAt.setFullYear(expiresAt.getFullYear() + 1); // 1년 유효
+      await tx.user.update({
+        where: { id: order.userId },
+        data: { pointBalance: { increment: order.pointEarned } },
+      });
+      await tx.pointHistory.create({
+        data: {
+          userId: order.userId,
+          amount: order.pointEarned,
+          reason: "주문 결제 적립",
+          orderId: order.id,
+          expiresAt,
+        },
+      });
+    }
+
+    return productIds;
   });
 
-  // 트랜잭션 커밋 후 임계치 체크 (실패해도 결제 흐름 영향 없음)
-  void checkAndNotifyLowStock(items.map((i) => i.productId)).catch(() => {});
+  void checkAndNotifyLowStock(productIdsForCheck).catch(() => {});
 }
 
 async function checkAndNotifyLowStock(productIds: string[]) {
@@ -37,10 +105,28 @@ async function checkAndNotifyLowStock(productIds: string[]) {
 
   const products = await prisma.product.findMany({
     where: { id: { in: productIds } },
-    select: { id: true, name: true, sku: true, stock: true, lowStockThreshold: true },
+    select: {
+      id: true, name: true, sku: true, stock: true, lowStockThreshold: true,
+      variants: { select: { name: true, stock: true } },
+    },
   });
 
-  const triggered = products.filter((p) => p.stock <= (p.lowStockThreshold ?? threshold));
+  type Triggered = { name: string; sku: string; stock: number };
+  const triggered: Triggered[] = [];
+
+  for (const p of products) {
+    const limit = p.lowStockThreshold ?? threshold;
+    if (p.variants.length > 0) {
+      for (const v of p.variants) {
+        if (v.stock <= limit) {
+          triggered.push({ name: `${p.name} - ${v.name}`, sku: p.sku, stock: v.stock });
+        }
+      }
+    } else if (p.stock <= limit) {
+      triggered.push({ name: p.name, sku: p.sku, stock: p.stock });
+    }
+  }
+
   if (triggered.length === 0) return;
 
   const lines = triggered.map((p) => `- ${p.name} (SKU ${p.sku}) — 잔여 ${p.stock}개`);
@@ -48,7 +134,7 @@ async function checkAndNotifyLowStock(productIds: string[]) {
   const html = `
     <div style="font-family: sans-serif; font-size: 14px;">
       <h2>⚠️ 재고 임계치 도달</h2>
-      <p>방금 결제 완료된 주문으로 인해 다음 ${triggered.length}건의 상품이 임계치(${threshold}) 이하로 떨어졌습니다.</p>
+      <p>방금 결제 완료된 주문으로 인해 다음 ${triggered.length}건이 임계치(${threshold}) 이하로 떨어졌습니다.</p>
       <ul>${triggered.map((p) => `<li>${p.name} (SKU ${p.sku}) — 잔여 ${p.stock}개</li>`).join("")}</ul>
     </div>
   `;

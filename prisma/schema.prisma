@@ -8,17 +8,23 @@ datasource db {
 }
 
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  passwordHash String
-  name         String
-  phone        String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id            String    @id @default(cuid())
+  email         String    @unique
+  passwordHash  String
+  name          String
+  phone         String?
+  pointBalance  Int       @default(0)
+  passwordChangedAt DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
-  addresses Address[]
-  orders    Order[]
-  reviews   Review[]
+  addresses    Address[]
+  orders       Order[]
+  reviews      Review[]
+  wishlist     Wishlist[]
+  userCoupons  UserCoupon[]
+  pointHistory PointHistory[]
+  loginLogs    LoginLog[]
 }
 
 model Address {
@@ -35,14 +41,14 @@ model Address {
 }
 
 model Category {
-  id       String     @id @default(cuid())
-  slug     String     @unique
-  name     String
-  parentId String?
-  parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id])
-  children Category[] @relation("CategoryTree")
-  sortOrder Int       @default(0)
-  products Product[]
+  id        String     @id @default(cuid())
+  slug      String     @unique
+  name      String
+  parentId  String?
+  parent    Category?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children  Category[] @relation("CategoryTree")
+  sortOrder Int        @default(0)
+  products  Product[]
 }
 
 model Product {
@@ -53,8 +59,8 @@ model Product {
   description String?
   price       Int
   salePrice   Int?
-  stock       Int      @default(0)
-  lowStockThreshold Int? // null이면 글로벌 LOW_STOCK_THRESHOLD 사용
+  stock       Int      @default(0)            // 옵션이 없으면 이 값을 사용
+  lowStockThreshold Int?
   thumbnail   String?
   images      String[] @default([])
   isActive    Boolean  @default(true)
@@ -65,8 +71,28 @@ model Product {
   categoryId String
   category   Category @relation(fields: [categoryId], references: [id])
 
+  variants   ProductVariant[]
   orderItems OrderItem[]
   reviews    Review[]
+  wishlist   Wishlist[]
+}
+
+/// 상품 옵션 (예: 색상)
+model ProductVariant {
+  id            String   @id @default(cuid())
+  productId     String
+  optionType    String   @default("color")  // color | size | etc
+  name          String                      // 예: "레드", "블루"
+  colorHex      String?                     // 표시용 컬러칩 (#FF0000)
+  stock         Int      @default(0)
+  priceModifier Int      @default(0)        // 기본가에 가산되는 추가금
+  sku           String?  @unique
+  thumbnail     String?
+  sortOrder     Int      @default(0)
+  isActive      Boolean  @default(true)
+
+  product       Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  orderItems    OrderItem[]
 }
 
 enum OrderStatus {
@@ -91,49 +117,160 @@ model Order {
   userId          String?
   user            User?           @relation(fields: [userId], references: [id])
   status          OrderStatus     @default(PENDING)
-  totalAmount     Int
+  totalAmount     Int                              // 최종 결제금액
+  itemsAmount     Int             @default(0)      // 상품금액 합계
   shippingFee     Int             @default(0)
+  couponDiscount  Int             @default(0)
+  pointUsed       Int             @default(0)
+  pointEarned     Int             @default(0)
+
   recipient       String
   phone           String
   zipCode         String
   address1        String
   address2        String?
   memo            String?
+
   provider        PaymentProvider?
   providerTxnId   String?
   paidAt          DateTime?
   shippedAt       DateTime?
   deliveredAt     DateTime?
   cancelledAt     DateTime?
-  courier         String?         // 택배사 (CJ대한통운 등)
-  trackingNo      String?         // 송장번호
-  adminMemo       String?         // 관리자 내부 메모
+  courier         String?
+  trackingNo      String?
+  adminMemo       String?
+
+  couponId        String?
+  coupon          Coupon?         @relation(fields: [couponId], references: [id])
+
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 
-  items OrderItem[]
+  items           OrderItem[]
+  pointHistory   PointHistory[]
+  userCoupons    UserCoupon[]
 }
 
 model OrderItem {
-  id        String  @id @default(cuid())
-  orderId   String
-  productId String
-  name      String
-  price     Int
-  quantity  Int
+  id          String  @id @default(cuid())
+  orderId     String
+  productId   String
+  variantId   String?
+  name        String
+  variantName String?
+  price       Int
+  quantity    Int
 
-  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order   Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
   product Product @relation(fields: [productId], references: [id])
+  variant ProductVariant? @relation(fields: [variantId], references: [id])
 }
 
+/// 리뷰 (구매 인증 가능)
 model Review {
+  id          String   @id @default(cuid())
+  userId      String
+  productId   String
+  orderItemId String?  @unique
+  rating      Int                            // 1-5
+  content     String
+  images      String[] @default([])
+  isVerifiedPurchase Boolean @default(false)
+  helpfulCount Int     @default(0)
+  isHidden    Boolean  @default(false)        // 관리자가 숨긴 리뷰
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+}
+
+/// 위시리스트
+model Wishlist {
   id        String   @id @default(cuid())
   userId    String
   productId String
-  rating    Int
-  content   String
   createdAt DateTime @default(now())
 
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productId])
+}
+
+enum DiscountType {
+  PERCENT
+  FIXED
+}
+
+/// 쿠폰 마스터
+model Coupon {
+  id              String       @id @default(cuid())
+  code            String       @unique          // 등록 코드 (예: WELCOME2026)
+  name            String
+  discountType    DiscountType
+  discountValue   Int                            // PERCENT: 1~100, FIXED: 원
+  minOrderAmount  Int          @default(0)
+  maxDiscount     Int?                           // PERCENT 쿠폰 상한
+  validFrom       DateTime
+  validUntil      DateTime
+  totalQuantity   Int?                           // null = 무제한
+  issuedCount     Int          @default(0)
+  usedCount       Int          @default(0)
+  isActive        Boolean      @default(true)
+  description     String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  userCoupons UserCoupon[]
+  orders      Order[]
+}
+
+/// 회원이 보유한 쿠폰
+model UserCoupon {
+  id        String   @id @default(cuid())
+  userId    String
+  couponId  String
+  usedAt    DateTime?
+  orderId   String?
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  coupon Coupon  @relation(fields: [couponId], references: [id])
+  order  Order?  @relation(fields: [orderId], references: [id])
+
+  @@unique([userId, couponId])
+}
+
+/// 적립금 이력
+model PointHistory {
+  id          String    @id @default(cuid())
+  userId      String
+  amount      Int                              // +적립 / -사용
+  reason      String                            // "주문 적립", "회원가입 축하" 등
+  orderId     String?
+  expiresAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  order Order? @relation(fields: [orderId], references: [id])
+}
+
+/// 로그인 시도 기록 (보안)
+model LoginLog {
+  id        String   @id @default(cuid())
+  userId    String?                           // 실패시 null 가능
+  email     String
+  ip        String?
+  userAgent String?
+  success   Boolean
+  reason    String?
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([email, createdAt])
+  @@index([ip, createdAt])
 }

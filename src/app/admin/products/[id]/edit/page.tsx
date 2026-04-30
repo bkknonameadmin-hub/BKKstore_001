@@ -7,7 +7,10 @@ export const dynamic = "force-dynamic";
 
 export default async function EditProductPage({ params }: { params: { id: string } }) {
   const [product, categories] = await Promise.all([
-    prisma.product.findUnique({ where: { id: params.id } }),
+    prisma.product.findUnique({
+      where: { id: params.id },
+      include: { variants: { orderBy: { sortOrder: "asc" } } },
+    }),
     prisma.category.findMany({ orderBy: [{ parentId: "asc" }, { sortOrder: "asc" }, { name: "asc" }] }),
   ]);
 
@@ -28,6 +31,15 @@ export default async function EditProductPage({ params }: { params: { id: string
     isActive: product.isActive,
     isFeatured: product.isFeatured,
     categoryId: product.categoryId,
+    variants: product.variants.map((v) => ({
+      id: v.id,
+      name: v.name,
+      colorHex: v.colorHex || "#1e6fdc",
+      stock: v.stock,
+      priceModifier: v.priceModifier,
+      sortOrder: v.sortOrder,
+      isActive: v.isActive,
+    })),
   };
 
   return (

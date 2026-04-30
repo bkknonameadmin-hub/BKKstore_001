@@ -3,6 +3,16 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { assertAdminApi } from "@/lib/admin-guard";
 
+const VariantSchema = z.object({
+  id: z.string().optional(),
+  name: z.string().min(1).max(40),
+  colorHex: z.string().nullable().optional(),
+  stock: z.number().int().min(0),
+  priceModifier: z.number().int().default(0),
+  sortOrder: z.number().int().default(0),
+  isActive: z.boolean().default(true),
+});
+
 const CreateSchema = z.object({
   sku: z.string().min(1).max(64),
   name: z.string().min(1).max(255),
@@ -17,6 +27,7 @@ const CreateSchema = z.object({
   isActive: z.boolean().default(true),
   isFeatured: z.boolean().default(false),
   categoryId: z.string().min(1),
+  variants: z.array(VariantSchema).default([]),
 });
 
 export async function POST(req: NextRequest) {
@@ -35,7 +46,25 @@ export async function POST(req: NextRequest) {
     const cat = await prisma.category.findUnique({ where: { id: data.categoryId } });
     if (!cat) return NextResponse.json({ error: "존재하지 않는 카테고리입니다." }, { status: 400 });
 
-    const product = await prisma.product.create({ data });
+    const { variants, ...productData } = data;
+    const product = await prisma.product.create({
+      data: {
+        ...productData,
+        variants: variants.length > 0
+          ? {
+              create: variants.map(({ id, ...v }) => ({
+                name: v.name,
+                colorHex: v.colorHex || null,
+                stock: v.stock,
+                priceModifier: v.priceModifier,
+                sortOrder: v.sortOrder,
+                isActive: v.isActive,
+              })),
+            }
+          : undefined,
+      },
+      include: { variants: true },
+    });
     return NextResponse.json(product);
   } catch (e: any) {
     if (e?.issues) return NextResponse.json({ error: e.issues[0]?.message || "유효성 오류" }, { status: 400 });
@@ -43,14 +72,14 @@ export async function POST(req: NextRequest) {
   }
 }
 
-export async function GET(req: NextRequest) {
+export async function GET(_req: NextRequest) {
   const guard = await assertAdminApi();
   if (!guard.ok) return NextResponse.json({ error: guard.error }, { status: guard.status });
 
   const items = await prisma.product.findMany({
     orderBy: { createdAt: "desc" },
     take: 100,
-    include: { category: true },
+    include: { category: true, variants: true },
   });
   return NextResponse.json(items);
 }

@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { useCart } from "@/store/cart";
+import { useCart, cartKeyOf } from "@/store/cart";
 import { formatKRW } from "@/lib/utils";
 
 export default function CartPage() {
@@ -43,36 +43,44 @@ export default function CartPage() {
               </tr>
             </thead>
             <tbody>
-              {items.map((it) => (
-                <tr key={it.productId} className="border-b border-gray-200">
-                  <td className="py-4 pl-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-20 h-20 bg-gray-100 rounded overflow-hidden border border-gray-100">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={it.thumbnail || "/images/placeholder.svg"} alt={it.name} className="w-full h-full object-cover" />
+              {items.map((it) => {
+                const key = cartKeyOf(it);
+                return (
+                  <tr key={key} className="border-b border-gray-200">
+                    <td className="py-4 pl-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-20 h-20 bg-gray-100 rounded overflow-hidden border border-gray-100">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={it.thumbnail || "/images/placeholder.svg"} alt={it.name} className="w-full h-full object-cover" />
+                        </div>
+                        <div className="max-w-[300px]">
+                          <Link href={`/products/${it.productId}`} className="hover:text-brand-600 line-clamp-2">
+                            {it.name}
+                          </Link>
+                          {it.variantName && (
+                            <div className="mt-1 text-xs text-gray-500">옵션: {it.variantName}</div>
+                          )}
+                        </div>
                       </div>
-                      <Link href={`/products/${it.productId}`} className="hover:text-brand-600 line-clamp-2 max-w-[280px]">
-                        {it.name}
-                      </Link>
-                    </div>
-                  </td>
-                  <td className="text-center">
-                    <div className="inline-flex items-center gap-1">
-                      <button onClick={() => setQty(it.productId, it.quantity - 1)} className="w-7 h-7 border border-gray-300 rounded">−</button>
-                      <input
-                        value={it.quantity}
-                        onChange={(e) => setQty(it.productId, parseInt(e.target.value || "1", 10) || 1)}
-                        className="w-12 h-7 border border-gray-300 rounded text-center"
-                      />
-                      <button onClick={() => setQty(it.productId, it.quantity + 1)} className="w-7 h-7 border border-gray-300 rounded">+</button>
-                    </div>
-                  </td>
-                  <td className="text-center font-bold">{formatKRW(it.price * it.quantity)}</td>
-                  <td className="text-center">
-                    <button onClick={() => remove(it.productId)} className="text-gray-400 hover:text-red-500">×</button>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td className="text-center">
+                      <div className="inline-flex items-center gap-1">
+                        <button onClick={() => setQty(key, it.quantity - 1)} className="w-7 h-7 border border-gray-300 rounded">−</button>
+                        <input
+                          value={it.quantity}
+                          onChange={(e) => setQty(key, parseInt(e.target.value || "1", 10) || 1)}
+                          className="w-12 h-7 border border-gray-300 rounded text-center"
+                        />
+                        <button onClick={() => setQty(key, it.quantity + 1)} className="w-7 h-7 border border-gray-300 rounded">+</button>
+                      </div>
+                    </td>
+                    <td className="text-center font-bold">{formatKRW(it.price * it.quantity)}</td>
+                    <td className="text-center">
+                      <button onClick={() => remove(key)} className="text-gray-400 hover:text-red-500">×</button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
 
@@ -96,7 +104,7 @@ export default function CartPage() {
           <button onClick={() => router.push("/checkout")} className="btn-primary w-full h-12 mt-4 text-base">
             주문하기
           </button>
-          <p className="mt-2 text-[11px] text-gray-400">5만원 이상 구매시 배송비 무료</p>
+          <p className="mt-2 text-[11px] text-gray-400">5만원 이상 구매시 배송비 무료 · 쿠폰/적립금은 결제 단계에서 적용</p>
         </aside>
       </div>
     </div>
