@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { getLowStockThreshold, notifyAdmin } from "@/lib/notify";
+import { notifyOrderPaid } from "@/lib/alimtalk";
 
 /**
  * 주문 결제 완료 처리:
@@ -96,7 +97,32 @@ export async function finalizeOrderPayment(args: {
     return productIds;
   });
 
+  // 트랜잭션 완료 후 비동기 작업 (실패해도 결제 흐름 영향 없음)
   void checkAndNotifyLowStock(productIdsForCheck).catch(() => {});
+  void sendOrderPaidAlimtalk(orderId).catch(() => {});
+}
+
+async function sendOrderPaidAlimtalk(orderId: string) {
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    select: {
+      orderNo: true, recipient: true, phone: true,
+      totalAmount: true, provider: true,
+    },
+  });
+  if (!order || !order.phone) return;
+
+  const PROVIDER_LABEL: Record<string, string> = {
+    TOSS: "토스페이먼츠", INICIS: "신용카드", NAVERPAY: "네이버페이",
+  };
+
+  await notifyOrderPaid({
+    orderNo: order.orderNo,
+    recipient: order.recipient,
+    phone: order.phone,
+    totalAmount: order.totalAmount,
+    provider: order.provider ? PROVIDER_LABEL[order.provider] || order.provider : null,
+  });
 }
 
 async function checkAndNotifyLowStock(productIds: string[]) {

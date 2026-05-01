@@ -12,6 +12,7 @@ const NAV = [
   { href: "/admin/categories", label: "카테고리", icon: "🗂️" },
   { href: "/admin/coupons", label: "쿠폰 관리", icon: "🎟" },
   { href: "/admin/reviews", label: "리뷰 관리", icon: "✍" },
+  { href: "/admin/notifications", label: "알림 관리", icon: "💬" },
   { href: "/admin/users", label: "회원 관리", icon: "👤" },
 ];
 

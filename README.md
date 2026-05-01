@@ -280,13 +280,42 @@ KAKAO_CLIENT_SECRET=
 # Redirect URI: {NEXTAUTH_URL}/api/auth/callback/kakao
 ```
 
+## 카카오 알림톡 (v5 추가)
+
+### 자동 발송 시점
+| 단계 | 트리거 | 발송 |
+|------|--------|------|
+| 주문/결제 완료 | PG 결제 콜백 | `notifyOrderPaid` |
+| 배송 시작 | 관리자가 SHIPPED 처리 | `notifyShippingStarted` (배송조회 버튼) |
+| 배송 완료 | 관리자가 DELIVERED 처리 | `notifyDeliveryCompleted` (리뷰 작성 버튼) |
+| 주문 취소 | 관리자가 CANCELLED 처리 | `notifyOrderCancelled` |
+| 환불 완료 | 관리자가 REFUNDED 처리 | `notifyOrderRefunded` |
+
+### 구조
+- `src/lib/alimtalk.ts` — Aligo AlimTalk API + 콘솔 폴백
+- 5개 표준 템플릿 정의 (운영시 카카오에 사전 심사/등록 필요)
+- 카카오톡 미수신/차단시 자동 SMS 폴백 (`failover: Y`)
+- 비동기 발송 (실패해도 결제/주문 흐름에 영향 없음)
+- 환경변수 미설정시 서버 콘솔에 메시지 출력 → 즉시 개발 가능
+
+### 관리자 페이지
+- `/admin/notifications` — 등록된 템플릿 5종 미리보기 + 카카오톡 말풍선 형태 노출
+- 본인 휴대폰으로 **테스트 발송** 기능 내장
+- 환경변수 설정 여부 자동 감지 (활성/콘솔 모드 표시)
+
+### 운영 도입 절차
+1. 카카오톡 비즈니스 채널 개설 + 알림톡 사용 신청
+2. `src/lib/alimtalk.ts` 의 5개 템플릿 본문을 그대로 카카오에 사전 심사 요청 (영업일 1~3일)
+3. `.env` 의 `ALIMTALK_*` 환경변수 입력
+4. 승인된 템플릿 코드를 `ALIMTALK_TPL_*` 환경변수에 매핑
+
 ## 다음 단계로 추가하면 좋은 기능
 
 - [ ] 2단계 인증 (TOTP / OTP App)
 - [ ] 이메일 인증 (가입시)
-- [ ] 카카오 알림톡 연동 (주문/배송)
 - [ ] 매출 정산 리포트 (월별 엑셀 다운로드)
 - [ ] 사이즈 옵션 (색상 + 사이즈 조합 SKU)
+- [ ] 알림 수신 동의 관리 (회원별 ON/OFF)
 - [ ] 비밀번호 재설정 (휴대폰 인증 기반)
 
 ## 라이선스

@@ -3,6 +3,12 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { assertAdminApi } from "@/lib/admin-guard";
 import { NEXT_TRANSITIONS } from "@/lib/order-status";
+import {
+  notifyShippingStarted,
+  notifyDeliveryCompleted,
+  notifyOrderCancelled,
+  notifyOrderRefunded,
+} from "@/lib/alimtalk";
 import type { OrderStatus, Prisma } from "@prisma/client";
 
 const Schema = z.object({
@@ -120,9 +126,34 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       return u;
     });
 
+    // 트랜잭션 완료 후 알림톡 발송 (실패해도 상태 변경엔 영향 없음)
+    if (body.status && body.status !== order.status) {
+      void dispatchAlimtalk(updated, body.status as OrderStatus).catch(() => {});
+    }
+
     return NextResponse.json(updated);
   } catch (e: any) {
     if (e?.issues) return NextResponse.json({ error: e.issues[0]?.message || "유효성 오류" }, { status: 400 });
     return NextResponse.json({ error: e.message || "수정 실패" }, { status: 400 });
   }
+}
+
+/** 상태 전환별 카카오 알림톡 발송 */
+async function dispatchAlimtalk(
+  order: { orderNo: string; recipient: string; phone: string; totalAmount: number; courier: string | null; trackingNo: string | null },
+  newStatus: OrderStatus
+) {
+  if (!order.phone) return;
+  const base = {
+    orderNo: order.orderNo,
+    recipient: order.recipient,
+    phone: order.phone,
+    totalAmount: order.totalAmount,
+    courier: order.courier,
+    trackingNo: order.trackingNo,
+  };
+  if (newStatus === "SHIPPED") return notifyShippingStarted(base);
+  if (newStatus === "DELIVERED") return notifyDeliveryCompleted(base);
+  if (newStatus === "CANCELLED") return notifyOrderCancelled(base);
+  if (newStatus === "REFUNDED") return notifyOrderRefunded(base);
 }
