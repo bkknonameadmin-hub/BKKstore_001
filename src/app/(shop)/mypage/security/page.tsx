@@ -106,6 +106,18 @@ export default async function SecurityPage() {
         </section>
       )}
 
+      {/* 회원 탈퇴 */}
+      <section className="border border-gray-200 rounded p-5 bg-white">
+        <h2 className="font-bold text-sm pb-3 mb-3 border-b border-gray-100">회원 탈퇴</h2>
+        <p className="text-sm text-gray-600 leading-relaxed">
+          탈퇴 시 적립금 / 쿠폰 / 위시리스트 등은 즉시 소멸되며, 개인정보는 분리 보관/익명화됩니다.
+          주문 이력은 전자상거래법에 따라 5년간 별도 보관됩니다.
+        </p>
+        <Link href="/mypage/withdraw" className="inline-block mt-3 text-sm text-red-600 hover:underline">
+          회원 탈퇴 진행 →
+        </Link>
+      </section>
+
       {/* 로그인 이력 */}
       <section className="border border-gray-200 rounded p-5 bg-white">
         <h2 className="font-bold text-sm pb-3 mb-3 border-b border-gray-100 flex items-center justify-between">

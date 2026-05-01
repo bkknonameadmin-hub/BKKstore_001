@@ -32,9 +32,18 @@ const providers: NextAuthOptions["providers"] = [
 
       const user = await prisma.user.findUnique({ where: { email } });
       if (!user || !user.passwordHash) {
-        // 패스워드 없음 = 소셜 가입 회원
         await logLoginAttempt({ email, userId: user?.id || null, success: false, reason: user ? "no_password" : "no_user", ip, userAgent });
         return null;
+      }
+
+      // 탈퇴/정지 계정 차단
+      if (user.status === "WITHDRAWN") {
+        await logLoginAttempt({ email, userId: user.id, success: false, reason: "withdrawn", ip, userAgent });
+        throw new Error("탈퇴 처리된 계정입니다.");
+      }
+      if (user.status === "SUSPENDED") {
+        await logLoginAttempt({ email, userId: user.id, success: false, reason: "suspended", ip, userAgent });
+        throw new Error("이용 정지된 계정입니다. 고객센터로 문의해주세요.");
       }
 
       const ok = await bcrypt.compare(password, user.passwordHash);
@@ -42,6 +51,16 @@ const providers: NextAuthOptions["providers"] = [
         await logLoginAttempt({ email, userId: user.id, success: false, reason: "wrong_password", ip, userAgent });
         return null;
       }
+
+      // 휴면 → 활성 자동 복귀 + lastLoginAt 갱신
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          lastLoginAt: new Date(),
+          status: user.status === "DORMANT" ? "ACTIVE" : user.status,
+          dormantAt: user.status === "DORMANT" ? null : user.dormantAt,
+        },
+      });
 
       await logLoginAttempt({ email, userId: user.id, success: true, ip, userAgent });
       return { id: user.id, email: user.email, name: user.name };

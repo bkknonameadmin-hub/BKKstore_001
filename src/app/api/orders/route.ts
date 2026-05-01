@@ -5,6 +5,9 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { generateOrderNo } from "@/lib/utils";
 import { calcCouponDiscount, validateCouponForOrder } from "@/lib/coupon";
+import { encrypt } from "@/lib/crypto";
+
+const PENDING_TTL_MS = 30 * 60 * 1000; // 30분 만료
 
 const Schema = z.object({
   items: z.array(z.object({
@@ -109,6 +112,9 @@ export async function POST(req: NextRequest) {
     const POINT_EARN_RATE = parseFloat(process.env.POINT_EARN_RATE || "0.01");
     const pointEarned = Math.floor((itemsAmount - couponDiscount - pointUsed) * POINT_EARN_RATE / 10) * 10; // 10원 단위 절삭
 
+    const phoneRaw = data.phone.replace(/[^0-9]/g, "");
+    const expiresAt = new Date(Date.now() + PENDING_TTL_MS);
+
     const order = await prisma.$transaction(async (tx) => {
       const o = await tx.order.create({
         data: {
@@ -121,8 +127,10 @@ export async function POST(req: NextRequest) {
           pointUsed,
           pointEarned,
           totalAmount,
+          expiresAt,                              // 30분 후 자동 취소 cron 대상
           recipient: data.recipient,
-          phone: data.phone,
+          phone: phoneRaw,                        // 평문 (호환)
+          phoneEnc: encrypt(phoneRaw),            // 암호화
           zipCode: data.zipCode,
           address1: data.address1,
           address2: data.address2 || null,
@@ -133,8 +141,19 @@ export async function POST(req: NextRequest) {
         },
       });
 
-      // 적립금 사용은 결제완료 시점에 실제 차감 (PENDING 단계에서는 예약만)
-      // 쿠폰 사용도 결제완료 시점에 처리
+      // 쿠폰 reservation (다른 PENDING 주문이 같은 쿠폰 못 쓰게 hold)
+      if (couponId && userId && data.userCouponId) {
+        const r = await tx.userCoupon.updateMany({
+          where: {
+            id: data.userCouponId,
+            userId,
+            usedAt: null,
+            OR: [{ reservedOrderId: null }, { reservedOrderId: o.id }],
+          },
+          data: { reservedOrderId: o.id, reservedAt: new Date() },
+        });
+        if (r.count === 0) throw new Error("선택한 쿠폰을 다른 결제에서 사용 중입니다.");
+      }
       return o;
     });
 

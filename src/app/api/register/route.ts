@@ -3,6 +3,7 @@ import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { checkPasswordStrength, getClientInfo, rateLimit } from "@/lib/security";
+import { encrypt, hashPhone } from "@/lib/crypto";
 
 const Schema = z.object({
   email: z.string().email().max(320),
@@ -34,12 +35,18 @@ export async function POST(req: NextRequest) {
 
     const passwordHash = await bcrypt.hash(data.password, 12);
 
+    const phoneRaw = data.phone?.replace(/[^0-9]/g, "") || null;
+    const phoneEnc = phoneRaw ? encrypt(phoneRaw) : null;
+    const phoneHash = phoneRaw ? hashPhone(phoneRaw) : null;
+
     const user = await prisma.$transaction(async (tx) => {
       const u = await tx.user.create({
         data: {
           email,
           name: data.name.trim(),
-          phone: data.phone?.trim() || null,
+          phone: phoneRaw,                 // 평문 (호환)
+          phoneEnc,                        // 암호화
+          phoneHash,                       // 검색용 해시
           passwordHash,
           pointBalance: SIGNUP_BONUS_POINT,
           passwordChangedAt: new Date(),

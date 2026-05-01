@@ -1,15 +1,24 @@
 import { prisma } from "@/lib/prisma";
 import { getLowStockThreshold, notifyAdmin } from "@/lib/notify";
 import { notifyOrderPaid } from "@/lib/alimtalk";
+import { Prisma } from "@prisma/client";
 
 /**
- * 주문 결제 완료 처리:
+ * 주문 결제 완료 처리 (race-condition safe):
  * - 주문 상태 PAID
- * - 옵션(variant) 또는 상품 재고 차감
- * - 쿠폰 사용 마킹
- * - 적립금 사용 차감 + 적립 적립
- * - 임계치 알림 (비동기)
+ * - 옵션(variant) 또는 상품 재고 차감 — 조건부 updateMany 로 oversell 방지
+ * - 쿠폰 사용 마킹 (예약된 쿠폰 → 사용)
+ * - 적립금 사용 차감 + 적립
+ *
+ * 재고 부족시 throw → 트랜잭션 롤백, 호출측에서 망취소 처리해야 함
  */
+export class OutOfStockError extends Error {
+  constructor(public productName: string) {
+    super(`재고 부족: ${productName}`);
+    this.name = "OutOfStockError";
+  }
+}
+
 export async function finalizeOrderPayment(args: {
   orderId: string;
   providerTxnId: string;
@@ -24,34 +33,45 @@ export async function finalizeOrderPayment(args: {
     if (!order) throw new Error("주문을 찾을 수 없습니다.");
     if (order.status !== "PENDING") return [] as string[];
 
-    // 1) 주문 상태 변경
-    await tx.order.update({
-      where: { id: order.id },
-      data: { status: "PAID", providerTxnId, paidAt: new Date() },
-    });
-
-    // 2) 재고 차감 (옵션이 있으면 옵션, 없으면 상품)
+    // 1) 재고 차감 (조건부 updateMany — 동시성 안전)
     const productIds: string[] = [];
     for (const it of order.items) {
       if (it.variantId) {
-        await tx.productVariant.update({
-          where: { id: it.variantId },
+        const r = await tx.productVariant.updateMany({
+          where: { id: it.variantId, stock: { gte: it.quantity } },
           data: { stock: { decrement: it.quantity } },
         });
+        if (r.count === 0) throw new OutOfStockError(`${it.name} - ${it.variantName}`);
       } else {
-        await tx.product.update({
-          where: { id: it.productId },
+        const r = await tx.product.updateMany({
+          where: { id: it.productId, stock: { gte: it.quantity } },
           data: { stock: { decrement: it.quantity } },
         });
+        if (r.count === 0) throw new OutOfStockError(it.name);
       }
       productIds.push(it.productId);
     }
 
-    // 3) 쿠폰 사용 마킹
+    // 2) 주문 상태 변경
+    await tx.order.update({
+      where: { id: order.id },
+      data: { status: "PAID", providerTxnId, paidAt: new Date(), expiresAt: null },
+    });
+
+    // 3) 쿠폰 사용 마킹 (예약된 쿠폰 → used)
     if (order.couponId && order.userId) {
       await tx.userCoupon.updateMany({
-        where: { userId: order.userId, couponId: order.couponId, usedAt: null },
-        data: { usedAt: new Date(), orderId: order.id },
+        where: {
+          userId: order.userId,
+          couponId: order.couponId,
+          OR: [{ reservedOrderId: order.id }, { usedAt: null }],
+        },
+        data: {
+          usedAt: new Date(),
+          orderId: order.id,
+          reservedOrderId: null,
+          reservedAt: null,
+        },
       });
       await tx.coupon.update({
         where: { id: order.couponId },
@@ -61,10 +81,13 @@ export async function finalizeOrderPayment(args: {
 
     // 4) 적립금 사용 차감
     if (order.userId && order.pointUsed > 0) {
-      await tx.user.update({
-        where: { id: order.userId },
+      // 회원 잔액이 충분한지 다시 검증
+      const r = await tx.user.updateMany({
+        where: { id: order.userId, pointBalance: { gte: order.pointUsed } },
         data: { pointBalance: { decrement: order.pointUsed } },
       });
+      if (r.count === 0) throw new Error("적립금 잔액이 부족합니다.");
+
       await tx.pointHistory.create({
         data: {
           userId: order.userId,
@@ -75,10 +98,10 @@ export async function finalizeOrderPayment(args: {
       });
     }
 
-    // 5) 적립금 적립 (배송완료 시점이 일반적이지만 단순화를 위해 결제 즉시)
+    // 5) 적립금 적립 (1년 유효)
     if (order.userId && order.pointEarned > 0) {
       const expiresAt = new Date();
-      expiresAt.setFullYear(expiresAt.getFullYear() + 1); // 1년 유효
+      expiresAt.setFullYear(expiresAt.getFullYear() + 1);
       await tx.user.update({
         where: { id: order.userId },
         data: { pointBalance: { increment: order.pointEarned } },
@@ -95,11 +118,39 @@ export async function finalizeOrderPayment(args: {
     }
 
     return productIds;
+  }, {
+    // 동시성 강화: Repeatable Read 격리 수준
+    isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
+    timeout: 15_000,
   });
 
   // 트랜잭션 완료 후 비동기 작업 (실패해도 결제 흐름 영향 없음)
   void checkAndNotifyLowStock(productIdsForCheck).catch(() => {});
   void sendOrderPaidAlimtalk(orderId).catch(() => {});
+}
+
+/**
+ * 주문 취소/환불시 재고 복원 (옵션 / 상품 모두 처리)
+ */
+export async function restoreOrderStock(orderId: string): Promise<void> {
+  await prisma.$transaction(async (tx) => {
+    const items = await tx.orderItem.findMany({ where: { orderId } });
+    for (const it of items) {
+      const restoreQty = it.quantity - it.refundedQuantity;
+      if (restoreQty <= 0) continue;
+      if (it.variantId) {
+        await tx.productVariant.update({
+          where: { id: it.variantId },
+          data: { stock: { increment: restoreQty } },
+        });
+      } else {
+        await tx.product.update({
+          where: { id: it.productId },
+          data: { stock: { increment: restoreQty } },
+        });
+      }
+    }
+  });
 }
 
 async function sendOrderPaidAlimtalk(orderId: string) {

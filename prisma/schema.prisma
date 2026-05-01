@@ -7,19 +7,44 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum UserRole {
+  CUSTOMER
+  CS_AGENT     // 고객 응대만 가능
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  DORMANT       // 1년 미접속 휴면
+  WITHDRAWN     // 탈퇴 (개인정보 분리/파기 대기)
+  SUSPENDED     // 운영자가 정지
+}
+
 model User {
-  id                String    @id @default(cuid())
-  email             String    @unique
+  id                String     @id @default(cuid())
+  email             String     @unique
   emailVerified     DateTime?
   image             String?
-  passwordHash      String?                       // 소셜로그인 회원은 null
+  passwordHash      String?
   name              String
+  /// 평문 노출 호환 컬럼 (운영시 phoneEnc 만 사용 권장)
   phone             String?
-  phoneVerifiedAt   DateTime?                     // 휴대폰 인증 시각
-  pointBalance      Int       @default(0)
+  /// 암호화된 전화번호 (AES-256-GCM)
+  phoneEnc          String?
+  /// 검색용 SHA-256 해시 (앞자리/뒷자리)
+  phoneHash         String?
+  phoneVerifiedAt   DateTime?
+  pointBalance      Int        @default(0)
   passwordChangedAt DateTime?
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  role              UserRole   @default(CUSTOMER)
+  status            UserStatus @default(ACTIVE)
+  lastLoginAt       DateTime?
+  dormantAt         DateTime?
+  withdrawnAt       DateTime?
+  withdrawReason    String?
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
 
   addresses    Address[]
   orders       Order[]
@@ -30,14 +55,20 @@ model User {
   loginLogs    LoginLog[]
   accounts     Account[]
   sessions     Session[]
+  refundRequests  RefundRequest[]
+  returnRequests  ReturnRequest[]
+  auditLogs       AuditLog[]      @relation("ActorAudit")
+
+  @@index([status])
+  @@index([phoneHash])
+  @@index([role])
 }
 
-/// NextAuth: OAuth 계정 연결 (네이버/카카오 등)
 model Account {
   id                 String  @id @default(cuid())
   userId             String
-  type               String                          // oauth, email 등
-  provider           String                          // naver, kakao, credentials
+  type               String
+  provider           String
   providerAccountId  String
   refresh_token      String? @db.Text
   access_token       String? @db.Text
@@ -50,18 +81,19 @@ model Account {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
+  @@index([userId])
 }
 
-/// NextAuth 세션 (DB 세션 미사용이지만 Adapter 호환을 위해 정의)
 model Session {
   id           String   @id @default(cuid())
   sessionToken String   @unique
   userId       String
   expires      DateTime
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
-/// NextAuth: 이메일 인증 등 임시 토큰
 model VerificationToken {
   identifier String
   token      String   @unique
@@ -70,19 +102,22 @@ model VerificationToken {
   @@unique([identifier, token])
 }
 
-/// 휴대폰 인증 코드 (6자리)
 model PhoneVerification {
-  id         String   @id @default(cuid())
-  phone      String                                 // 정규화된 번호 (예: 01012345678)
-  codeHash   String                                 // SHA-256 해시
+  id         String    @id @default(cuid())
+  /// 정규화된 평문 (단기 보관)
+  phone      String
+  /// 검색용 해시
+  phoneHash  String?
+  codeHash   String
   expiresAt  DateTime
-  attempts   Int      @default(0)
+  attempts   Int       @default(0)
   consumedAt DateTime?
   ip         String?
-  userId     String?                                // 인증 요청 회원 (있으면)
-  createdAt  DateTime @default(now())
+  userId     String?
+  createdAt  DateTime  @default(now())
 
   @@index([phone, createdAt])
+  @@index([phoneHash, createdAt])
   @@index([expiresAt])
 }
 
@@ -90,13 +125,18 @@ model Address {
   id        String  @id @default(cuid())
   userId    String
   recipient String
+  /// 평문 (호환)
   phone     String
+  /// 암호화
+  phoneEnc  String?
   zipCode   String
   address1  String
   address2  String?
   isDefault Boolean @default(false)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model Category {
@@ -108,6 +148,8 @@ model Category {
   children  Category[] @relation("CategoryTree")
   sortOrder Int        @default(0)
   products  Product[]
+
+  @@index([parentId, sortOrder])
 }
 
 model Product {
@@ -118,7 +160,7 @@ model Product {
   description String?
   price       Int
   salePrice   Int?
-  stock       Int      @default(0)            // 옵션이 없으면 이 값을 사용
+  stock       Int      @default(0)
   lowStockThreshold Int?
   thumbnail   String?
   images      String[] @default([])
@@ -134,17 +176,21 @@ model Product {
   orderItems OrderItem[]
   reviews    Review[]
   wishlist   Wishlist[]
+
+  @@index([categoryId, isActive])
+  @@index([isActive, isFeatured])
+  @@index([isActive, createdAt])
+  @@index([brand])
 }
 
-/// 상품 옵션 (예: 색상)
 model ProductVariant {
   id            String   @id @default(cuid())
   productId     String
-  optionType    String   @default("color")  // color | size | etc
-  name          String                      // 예: "레드", "블루"
-  colorHex      String?                     // 표시용 컬러칩 (#FF0000)
+  optionType    String   @default("color")
+  name          String
+  colorHex      String?
   stock         Int      @default(0)
-  priceModifier Int      @default(0)        // 기본가에 가산되는 추가금
+  priceModifier Int      @default(0)
   sku           String?  @unique
   thumbnail     String?
   sortOrder     Int      @default(0)
@@ -152,6 +198,8 @@ model ProductVariant {
 
   product       Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
   orderItems    OrderItem[]
+
+  @@index([productId, isActive, sortOrder])
 }
 
 enum OrderStatus {
@@ -162,6 +210,7 @@ enum OrderStatus {
   DELIVERED
   CANCELLED
   REFUNDED
+  PARTIALLY_REFUNDED
 }
 
 enum PaymentProvider {
@@ -176,15 +225,17 @@ model Order {
   userId          String?
   user            User?           @relation(fields: [userId], references: [id])
   status          OrderStatus     @default(PENDING)
-  totalAmount     Int                              // 최종 결제금액
-  itemsAmount     Int             @default(0)      // 상품금액 합계
+  totalAmount     Int
+  itemsAmount     Int             @default(0)
   shippingFee     Int             @default(0)
   couponDiscount  Int             @default(0)
   pointUsed       Int             @default(0)
   pointEarned     Int             @default(0)
+  refundedAmount  Int             @default(0)        // 누적 환불액
 
   recipient       String
   phone           String
+  phoneEnc        String?
   zipCode         String
   address1        String
   address2        String?
@@ -196,9 +247,15 @@ model Order {
   shippedAt       DateTime?
   deliveredAt     DateTime?
   cancelledAt     DateTime?
+  expiresAt       DateTime?       // PENDING 만료 시각 (예: 30분 후)
   courier         String?
   trackingNo      String?
   adminMemo       String?
+
+  /// 현금영수증 발행 정보
+  cashReceiptType   String?       // PERSONAL | BUSINESS | null
+  cashReceiptNumber String?       // 휴대폰/사업자등록번호
+  cashReceiptIssued Boolean @default(false)
 
   couponId        String?
   coupon          Coupon?         @relation(fields: [couponId], references: [id])
@@ -206,9 +263,16 @@ model Order {
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 
-  items           OrderItem[]
+  items          OrderItem[]
   pointHistory   PointHistory[]
   userCoupons    UserCoupon[]
+  refundRequests RefundRequest[]
+  returnRequests ReturnRequest[]
+
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+  @@index([status, expiresAt])
+  @@index([paidAt])
 }
 
 model OrderItem {
@@ -220,32 +284,39 @@ model OrderItem {
   variantName String?
   price       Int
   quantity    Int
+  refundedQuantity Int @default(0)
 
   order   Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
   product Product @relation(fields: [productId], references: [id])
   variant ProductVariant? @relation(fields: [variantId], references: [id])
+
+  returnRequestItems ReturnRequestItem[]
+
+  @@index([orderId])
+  @@index([productId])
 }
 
-/// 리뷰 (구매 인증 가능)
 model Review {
   id          String   @id @default(cuid())
   userId      String
   productId   String
   orderItemId String?  @unique
-  rating      Int                            // 1-5
+  rating      Int
   content     String
   images      String[] @default([])
   isVerifiedPurchase Boolean @default(false)
   helpfulCount Int     @default(0)
-  isHidden    Boolean  @default(false)        // 관리자가 숨긴 리뷰
+  isHidden    Boolean  @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId, isHidden, createdAt])
+  @@index([userId, createdAt])
 }
 
-/// 위시리스트
 model Wishlist {
   id        String   @id @default(cuid())
   userId    String
@@ -256,6 +327,7 @@ model Wishlist {
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@unique([userId, productId])
+  @@index([userId, createdAt])
 }
 
 enum DiscountType {
@@ -263,18 +335,17 @@ enum DiscountType {
   FIXED
 }
 
-/// 쿠폰 마스터
 model Coupon {
   id              String       @id @default(cuid())
-  code            String       @unique          // 등록 코드 (예: WELCOME2026)
+  code            String       @unique
   name            String
   discountType    DiscountType
-  discountValue   Int                            // PERCENT: 1~100, FIXED: 원
+  discountValue   Int
   minOrderAmount  Int          @default(0)
-  maxDiscount     Int?                           // PERCENT 쿠폰 상한
+  maxDiscount     Int?
   validFrom       DateTime
   validUntil      DateTime
-  totalQuantity   Int?                           // null = 무제한
+  totalQuantity   Int?
   issuedCount     Int          @default(0)
   usedCount       Int          @default(0)
   isActive        Boolean      @default(true)
@@ -284,13 +355,17 @@ model Coupon {
 
   userCoupons UserCoupon[]
   orders      Order[]
+
+  @@index([isActive, validFrom, validUntil])
 }
 
-/// 회원이 보유한 쿠폰
 model UserCoupon {
   id        String   @id @default(cuid())
   userId    String
   couponId  String
+  /// 결제대기 중 임시 hold (PENDING 주문에 점유 표시)
+  reservedOrderId String?
+  reservedAt DateTime?
   usedAt    DateTime?
   orderId   String?
   expiresAt DateTime
@@ -301,26 +376,29 @@ model UserCoupon {
   order  Order?  @relation(fields: [orderId], references: [id])
 
   @@unique([userId, couponId])
+  @@index([userId, usedAt, expiresAt])
+  @@index([reservedOrderId])
 }
 
-/// 적립금 이력
 model PointHistory {
   id          String    @id @default(cuid())
   userId      String
-  amount      Int                              // +적립 / -사용
-  reason      String                            // "주문 적립", "회원가입 축하" 등
+  amount      Int
+  reason      String
   orderId     String?
   expiresAt   DateTime?
   createdAt   DateTime  @default(now())
 
   user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   order Order? @relation(fields: [orderId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([expiresAt])
 }
 
-/// 로그인 시도 기록 (보안)
 model LoginLog {
   id        String   @id @default(cuid())
-  userId    String?                           // 실패시 null 가능
+  userId    String?
   email     String
   ip        String?
   userAgent String?
@@ -332,4 +410,116 @@ model LoginLog {
 
   @@index([email, createdAt])
   @@index([ip, createdAt])
+  @@index([userId, createdAt])
+}
+
+/// 멱등성 키 (POST /api/orders 등 중복 제출 방지)
+model IdempotencyKey {
+  key        String   @id
+  scope      String                  // "orders.create" 등
+  userId     String?
+  responseStatus Int
+  responseBody   String   @db.Text
+  createdAt  DateTime @default(now())
+  expiresAt  DateTime
+
+  @@index([expiresAt])
+  @@index([userId, scope])
+}
+
+/// 관리자 활동 감사 로그
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?                  // 작업자 (User.id)
+  actor      User?    @relation("ActorAudit", fields: [actorId], references: [id])
+  actorEmail String?
+  action     String                   // "order.refund", "product.delete" 등
+  targetType String?                  // "Order", "Product"
+  targetId   String?
+  ip         String?
+  userAgent  String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([actorId, createdAt])
+  @@index([targetType, targetId])
+  @@index([action, createdAt])
+}
+
+enum RefundStatus {
+  REQUESTED
+  APPROVED
+  REJECTED
+  COMPLETED
+}
+
+/// 환불 요청 (부분 환불 포함)
+model RefundRequest {
+  id           String       @id @default(cuid())
+  orderId      String
+  userId       String?
+  amount       Int
+  reason       String
+  status       RefundStatus @default(REQUESTED)
+  adminMemo    String?
+  pgRefundId   String?      // PG 환불 거래번호
+  processedAt  DateTime?
+  createdAt    DateTime     @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  user  User? @relation(fields: [userId], references: [id])
+
+  @@index([orderId])
+  @@index([status, createdAt])
+}
+
+enum ReturnStatus {
+  REQUESTED          // 회원이 신청
+  APPROVED           // 관리자 승인 (회수 라벨 발급)
+  PICKED_UP          // 회수 완료
+  COMPLETED          // 검수 후 환불/교환 완료
+  REJECTED
+  CANCELLED          // 회원이 취소
+}
+
+enum ReturnType {
+  RETURN              // 반품
+  EXCHANGE            // 교환
+}
+
+/// 반품/교환 요청
+model ReturnRequest {
+  id           String       @id @default(cuid())
+  orderId      String
+  userId       String?
+  type         ReturnType   @default(RETURN)
+  status       ReturnStatus @default(REQUESTED)
+  reason       String
+  reasonDetail String?
+  /// 회수 송장 (관리자가 입력)
+  pickupCourier   String?
+  pickupTrackingNo String?
+  refundAmount Int          @default(0)
+  adminMemo    String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  user  User? @relation(fields: [userId], references: [id])
+  items ReturnRequestItem[]
+
+  @@index([orderId])
+  @@index([status, createdAt])
+}
+
+model ReturnRequestItem {
+  id              String @id @default(cuid())
+  returnRequestId String
+  orderItemId     String
+  quantity        Int
+
+  returnRequest ReturnRequest @relation(fields: [returnRequestId], references: [id], onDelete: Cascade)
+  orderItem     OrderItem     @relation(fields: [orderItemId], references: [id])
+
+  @@index([returnRequestId])
 }

@@ -309,6 +309,79 @@ KAKAO_CLIENT_SECRET=
 3. `.env` 의 `ALIMTALK_*` 환경변수 입력
 4. 승인된 템플릿 코드를 `ALIMTALK_TPL_*` 환경변수에 매핑
 
+## 백엔드 인프라 (v6 추가)
+
+### 데이터베이스
+- **Prisma migrate 전환** — `db:migrate` (개발), `db:migrate:deploy` (운영)
+- **인덱스 최적화** — `Order.userId+createdAt`, `Product.categoryId+isActive`, `LoginLog.email+createdAt` 등 핫패스에 인덱스 적용
+- 신규 모델: `IdempotencyKey`, `AuditLog`, `RefundRequest`, `ReturnRequest`, `ReturnRequestItem`
+
+### 동시성 / 정합성
+- **재고 race-condition 방어** — `updateMany({ where: stock >= qty })` 조건부 차감으로 oversell 방지
+- **쿠폰 reservation hold** — PENDING 단계에서 다른 결제가 같은 쿠폰 사용 못 하게 점유
+- **PENDING 30분 자동 만료** — `/api/cron/expire-pending` (CRON_SECRET 필요)
+
+### PG Webhook (결제 누락 방지)
+- `/api/payments/toss/webhook` — 토스 PAYMENT_STATUS_CHANGED + HMAC-SHA256 서명 검증
+- `/api/payments/inicis/notify` — 이니시스 노티 URL (서버 통보)
+- `/api/payments/naver/webhook` — 네이버페이 취소/환불 통보
+- 결제창 닫혀도 PG 통보로 DB 자동 동기화
+
+### 개인정보 보호 (전자상거래/개인정보보호법)
+- **AES-256-GCM 암호화** (`lib/crypto.ts`) — 휴대폰 번호 등 PII 암호화 저장
+- **검색용 HMAC-SHA-256 해시** — 동등 검색 가능, 역추적 불가
+- **회원 탈퇴 흐름** — `/mypage/withdraw` + `/api/me/withdraw` (PII 즉시 익명화 + 주문 5년 보관)
+- **휴면 회원 자동 처리** — `/api/cron/dormant-users` (1년 미접속 → DORMANT, 5년 → 파기)
+
+### RBAC
+- `User.role`: CUSTOMER / CS_AGENT / ADMIN / SUPER_ADMIN
+- `User.status`: ACTIVE / DORMANT / WITHDRAWN / SUSPENDED
+- `ADMIN_EMAILS` env는 부트스트랩용으로 유지 (해당 이메일 자동 ADMIN 승격)
+
+### 운영 모듈
+- `lib/logger.ts` — 구조화 로거 (운영시 JSON 라인, 개발시 가독성 출력)
+- `lib/idempotency.ts` — `Idempotency-Key` 헤더 기반 중복 요청 방지
+- `lib/queue.ts` — 백그라운드 작업 큐 (인메모리, BullMQ로 교체 가능)
+- `/api/health` — `?deep=1`로 DB 연결까지 점검
+
+### 한국 e-commerce 특화
+- **현금영수증 발행** (`lib/cash-receipt.ts` + `/api/admin/cash-receipts`)
+- **부분 환불** — `/api/admin/refunds` (전액/부분, 적립금 복구, 쿠폰 복구 옵션)
+- **반품/교환** — `/api/returns` (회원), `/api/admin/returns/[id]` (관리자)
+  - DELIVERED 후 7일 이내 신청
+  - 상태 머신: REQUESTED → APPROVED → PICKED_UP → COMPLETED
+
+### 테스트 / CI
+- `npm test` — Vitest 단위 테스트 (쿠폰 계산, 암호화 등)
+- `.github/workflows/ci.yml` — push/PR시 자동 lint + test + build
+- PostgreSQL 서비스 컨테이너로 통합 테스트 가능
+
+## 운영 배포 체크리스트
+
+```bash
+# 1. 환경변수 필수 설정
+ENCRYPTION_KEY=$(openssl rand -hex 32)
+CRON_SECRET=$(openssl rand -base64 32)
+NEXTAUTH_SECRET=$(openssl rand -base64 32)
+TOSS_WEBHOOK_SECRET=...      # 토스 콘솔에서 발급
+
+# 2. 마이그레이션 적용
+npm run db:migrate:deploy
+
+# 3. PG Webhook URL 등록 (각 PG 콘솔)
+# Toss: {NEXTAUTH_URL}/api/payments/toss/webhook
+# 이니시스: {NEXTAUTH_URL}/api/payments/inicis/notify
+# 네이버: {NEXTAUTH_URL}/api/payments/naver/webhook
+
+# 4. Cron 등록 (Vercel Cron / 외부)
+# */5 * * * * curl -H "x-cron-token: $CRON_SECRET" {URL}/api/cron/expire-pending
+# 0 4 * * *   curl -H "x-cron-token: $CRON_SECRET" {URL}/api/cron/dormant-users
+
+# 5. 스토리지 S3 활성화 (lib/storage.ts 의 S3Storage 주석 해제 + S3_* 설정)
+
+# 6. /api/health?deep=1 호출하여 모든 의존성 정상 확인
+```
+
 ## 다음 단계로 추가하면 좋은 기능
 
 - [ ] 2단계 인증 (TOTP / OTP App)
@@ -316,6 +389,10 @@ KAKAO_CLIENT_SECRET=
 - [ ] 매출 정산 리포트 (월별 엑셀 다운로드)
 - [ ] 사이즈 옵션 (색상 + 사이즈 조합 SKU)
 - [ ] 알림 수신 동의 관리 (회원별 ON/OFF)
+- [ ] Sentry 에러 트래킹
+- [ ] Redis 도입 (세션 캐시, 분산 레이트리밋)
+- [ ] BullMQ 백그라운드 큐 (alimtalk 재시도)
+- [ ] Postgres tsvector + 형태소 분석 검색
 - [ ] 비밀번호 재설정 (휴대폰 인증 기반)
 
 ## 라이선스
