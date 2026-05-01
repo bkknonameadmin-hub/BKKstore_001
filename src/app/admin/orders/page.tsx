@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 type SP = { [k: string]: string | string[] | undefined };
 const PAGE_SIZE = 20;
 
-const STATUSES: (OrderStatus | "")[] = ["", "PENDING", "PAID", "PREPARING", "SHIPPED", "DELIVERED", "CANCELLED", "REFUNDED"];
+const STATUSES: (OrderStatus | "")[] = ["", "PENDING", "PAID", "PREPARING", "SHIPPED", "DELIVERED", "CANCELLED", "REFUNDED", "PARTIALLY_REFUNDED"];
 
 export default async function AdminOrdersPage({ searchParams }: { searchParams: SP }) {
   const q = (searchParams.q as string) || "";

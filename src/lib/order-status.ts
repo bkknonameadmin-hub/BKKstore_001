@@ -8,6 +8,7 @@ export const ORDER_STATUS_LABEL: Record<OrderStatus, string> = {
   DELIVERED: "배송완료",
   CANCELLED: "주문취소",
   REFUNDED: "환불완료",
+  PARTIALLY_REFUNDED: "부분환불",
 };
 
 export const ORDER_STATUS_COLOR: Record<OrderStatus, string> = {
@@ -18,17 +19,19 @@ export const ORDER_STATUS_COLOR: Record<OrderStatus, string> = {
   DELIVERED: "bg-green-50 text-green-700",
   CANCELLED: "bg-red-50 text-red-700",
   REFUNDED: "bg-purple-50 text-purple-700",
+  PARTIALLY_REFUNDED: "bg-purple-50 text-purple-600",
 };
 
 /** 다음에 갈 수 있는 상태 후보 */
 export const NEXT_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
-  PENDING:    ["CANCELLED"],
-  PAID:       ["PREPARING", "CANCELLED", "REFUNDED"],
-  PREPARING:  ["SHIPPED", "CANCELLED", "REFUNDED"],
-  SHIPPED:    ["DELIVERED", "REFUNDED"],
-  DELIVERED:  ["REFUNDED"],
-  CANCELLED:  [],
-  REFUNDED:   [],
+  PENDING:           ["CANCELLED"],
+  PAID:              ["PREPARING", "CANCELLED", "REFUNDED", "PARTIALLY_REFUNDED"],
+  PREPARING:         ["SHIPPED", "CANCELLED", "REFUNDED", "PARTIALLY_REFUNDED"],
+  SHIPPED:           ["DELIVERED", "REFUNDED", "PARTIALLY_REFUNDED"],
+  DELIVERED:         ["REFUNDED", "PARTIALLY_REFUNDED"],
+  PARTIALLY_REFUNDED:["REFUNDED"],
+  CANCELLED:         [],
+  REFUNDED:          [],
 };
 
 export const COURIERS = [

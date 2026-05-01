@@ -12,7 +12,7 @@ import {
 import type { OrderStatus, Prisma } from "@prisma/client";
 
 const Schema = z.object({
-  status: z.enum(["PENDING", "PAID", "PREPARING", "SHIPPED", "DELIVERED", "CANCELLED", "REFUNDED"]).optional(),
+  status: z.enum(["PENDING", "PAID", "PREPARING", "SHIPPED", "DELIVERED", "CANCELLED", "REFUNDED", "PARTIALLY_REFUNDED"]).optional(),
   courier: z.string().nullable().optional(),
   trackingNo: z.string().nullable().optional(),
   adminMemo: z.string().nullable().optional(),
