@@ -29,6 +29,13 @@ export async function POST(req: NextRequest) {
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) return NextResponse.json({ error: "사용자를 찾을 수 없습니다." }, { status: 404 });
 
+    // 소셜로 가입한 회원은 비밀번호가 없음 → 변경 불가
+    if (!user.passwordHash) {
+      return NextResponse.json({
+        error: "소셜 계정으로 가입한 회원은 비밀번호를 설정할 수 없습니다. 해당 SNS의 보안 설정을 이용해주세요.",
+      }, { status: 400 });
+    }
+
     const ok = await bcrypt.compare(data.currentPassword, user.passwordHash);
     if (!ok) {
       const { ip, userAgent } = getClientInfo(req);

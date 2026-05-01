@@ -13,19 +13,19 @@ import type { NextRequest } from "next/server";
 export function middleware(req: NextRequest) {
   const res = NextResponse.next();
 
-  // 결제 SDK / 주소 검색 / 추적 API 등을 위해 외부 도메인 일부 허용
+  // 결제 SDK / 주소 검색 / 추적 API / OAuth 등을 위해 외부 도메인 일부 허용
   const csp = [
     "default-src 'self'",
-    // Next.js 인라인 스크립트 + 외부 결제 SDK
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.tosspayments.com https://stdpay.inicis.com https://t1.daumcdn.net https://*.naver.com https://nsp.pay.naver.com",
+    // Next.js 인라인 스크립트 + 외부 결제/SNS SDK
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.tosspayments.com https://stdpay.inicis.com https://t1.daumcdn.net https://*.naver.com https://nsp.pay.naver.com https://*.kakao.com https://*.kakaocdn.net https://developers.kakao.com",
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob: https: http:",
     "font-src 'self' data:",
-    "connect-src 'self' https://api.tosspayments.com https://*.inicis.com https://*.naver.com https://info.sweettracker.co.kr https://hooks.slack.com",
-    "frame-src 'self' https://*.tosspayments.com https://*.inicis.com https://*.naver.com",
+    "connect-src 'self' https://api.tosspayments.com https://*.inicis.com https://*.naver.com https://*.kakao.com https://info.sweettracker.co.kr https://hooks.slack.com https://apis.aligo.in",
+    "frame-src 'self' https://*.tosspayments.com https://*.inicis.com https://*.naver.com https://*.kakao.com",
     "object-src 'none'",
     "base-uri 'self'",
-    "form-action 'self' https://*.tosspayments.com https://*.inicis.com https://*.naver.com",
+    "form-action 'self' https://*.tosspayments.com https://*.inicis.com https://*.naver.com https://*.kakao.com",
     "frame-ancestors 'none'",
   ].join("; ");
 

@@ -58,8 +58,63 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     const updated = await prisma.$transaction(async (tx) => {
       const u = await tx.order.update({ where: { id: order.id }, data: update });
       if (restock) {
+        // 옵션이 있는 항목은 옵션 재고를, 없으면 상품 재고를 복원
         for (const it of order.items) {
-          await tx.product.update({ where: { id: it.productId }, data: { stock: { increment: it.quantity } } });
+          if (it.variantId) {
+            await tx.productVariant.update({
+              where: { id: it.variantId },
+              data: { stock: { increment: it.quantity } },
+            });
+          } else {
+            await tx.product.update({
+              where: { id: it.productId },
+              data: { stock: { increment: it.quantity } },
+            });
+          }
+        }
+
+        // 사용한 적립금 환불
+        if (order.userId && order.pointUsed > 0) {
+          await tx.user.update({
+            where: { id: order.userId },
+            data: { pointBalance: { increment: order.pointUsed } },
+          });
+          await tx.pointHistory.create({
+            data: {
+              userId: order.userId,
+              amount: order.pointUsed,
+              reason: `주문 ${body.status === "CANCELLED" ? "취소" : "환불"} 적립금 환불`,
+              orderId: order.id,
+            },
+          });
+        }
+
+        // 적립된 적립금 회수 (이미 적립한 경우)
+        if (order.userId && order.pointEarned > 0) {
+          await tx.user.update({
+            where: { id: order.userId },
+            data: { pointBalance: { decrement: order.pointEarned } },
+          });
+          await tx.pointHistory.create({
+            data: {
+              userId: order.userId,
+              amount: -order.pointEarned,
+              reason: `주문 ${body.status === "CANCELLED" ? "취소" : "환불"} 적립금 회수`,
+              orderId: order.id,
+            },
+          });
+        }
+
+        // 사용한 쿠폰 복원 (재사용 가능하게)
+        if (order.couponId && order.userId) {
+          await tx.userCoupon.updateMany({
+            where: { userId: order.userId, couponId: order.couponId, orderId: order.id },
+            data: { usedAt: null, orderId: null },
+          });
+          await tx.coupon.update({
+            where: { id: order.couponId },
+            data: { usedCount: { decrement: 1 } },
+          });
         }
       }
       return u;

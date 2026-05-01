@@ -133,13 +133,15 @@ export const authOptions: NextAuthOptions = {
       }
     },
     async signIn({ user, account }) {
+      // Credentials 는 authorize() 에서 이미 기록 → OAuth 로그인만 여기서 기록
+      if (!account || account.provider === "credentials") return;
       const { ip, userAgent } = getClientInfo();
       if (user.email) {
         await logLoginAttempt({
           email: user.email,
           userId: user.id || null,
           success: true,
-          reason: account?.provider ? `oauth:${account.provider}` : null,
+          reason: `oauth:${account.provider}`,
           ip, userAgent,
         });
       }

@@ -13,19 +13,29 @@ export default async function SecurityPage() {
   if (!session?.user) redirect("/login?callbackUrl=/mypage/security");
   const userId = (session.user as any).id as string;
 
-  const [user, logs] = await Promise.all([
+  const [user, logs, accounts] = await Promise.all([
     prisma.user.findUnique({
       where: { id: userId },
-      select: { email: true, phone: true, phoneVerifiedAt: true, passwordChangedAt: true, createdAt: true },
+      select: {
+        email: true, phone: true, phoneVerifiedAt: true,
+        passwordHash: true, passwordChangedAt: true, createdAt: true,
+      },
     }),
     prisma.loginLog.findMany({
       where: { userId },
       orderBy: { createdAt: "desc" },
       take: 30,
     }),
+    prisma.account.findMany({
+      where: { userId },
+      select: { provider: true },
+    }),
   ]);
 
   if (!user) redirect("/login");
+
+  const hasPassword = !!user.passwordHash;
+  const linkedProviders = accounts.map((a) => a.provider);
 
   return (
     <div className="space-y-6">
@@ -46,10 +56,22 @@ export default async function SecurityPage() {
         <dl className="text-sm space-y-1.5">
           <div className="flex justify-between"><dt className="text-gray-500">이메일</dt><dd className="font-mono">{user.email}</dd></div>
           <div className="flex justify-between"><dt className="text-gray-500">가입일</dt><dd>{user.createdAt.toLocaleDateString("ko-KR")}</dd></div>
-          <div className="flex justify-between">
-            <dt className="text-gray-500">비밀번호 최근 변경</dt>
-            <dd>{user.passwordChangedAt ? user.passwordChangedAt.toLocaleString("ko-KR") : "변경 이력 없음"}</dd>
-          </div>
+          {hasPassword && (
+            <div className="flex justify-between">
+              <dt className="text-gray-500">비밀번호 최근 변경</dt>
+              <dd>{user.passwordChangedAt ? user.passwordChangedAt.toLocaleString("ko-KR") : "변경 이력 없음"}</dd>
+            </div>
+          )}
+          {linkedProviders.length > 0 && (
+            <div className="flex justify-between">
+              <dt className="text-gray-500">연결된 SNS</dt>
+              <dd className="flex gap-1">
+                {linkedProviders.map((p) => (
+                  <span key={p} className="px-2 py-0.5 rounded bg-brand-50 text-brand-700 text-[11px] font-bold uppercase">{p}</span>
+                ))}
+              </dd>
+            </div>
+          )}
         </dl>
       </section>
 
@@ -68,11 +90,21 @@ export default async function SecurityPage() {
         />
       </section>
 
-      {/* 비밀번호 변경 */}
-      <section className="border border-gray-200 rounded p-5 bg-white">
-        <h2 className="font-bold text-sm pb-3 mb-3 border-b border-gray-100">비밀번호 변경</h2>
-        <ChangePasswordForm />
-      </section>
+      {/* 비밀번호 변경 (소셜 전용 회원은 숨김) */}
+      {hasPassword ? (
+        <section className="border border-gray-200 rounded p-5 bg-white">
+          <h2 className="font-bold text-sm pb-3 mb-3 border-b border-gray-100">비밀번호 변경</h2>
+          <ChangePasswordForm />
+        </section>
+      ) : (
+        <section className="border border-gray-200 rounded p-5 bg-white">
+          <h2 className="font-bold text-sm pb-3 mb-3 border-b border-gray-100">비밀번호 변경</h2>
+          <p className="text-sm text-gray-500">
+            소셜 계정({linkedProviders.join(", ")})으로 가입하신 회원입니다.
+            비밀번호는 해당 SNS의 보안 설정에서 변경하실 수 있습니다.
+          </p>
+        </section>
+      )}
 
       {/* 로그인 이력 */}
       <section className="border border-gray-200 rounded p-5 bg-white">

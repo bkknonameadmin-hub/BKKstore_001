@@ -55,12 +55,7 @@ export default function CheckoutPage() {
       .catch(() => {});
   }, []);
 
-  if (!mounted) return null;
-  if (items.length === 0) {
-    if (typeof window !== "undefined") router.replace("/cart");
-    return null;
-  }
-
+  // 모든 훅을 조건부 리턴 위에서 호출 (React hooks 규칙)
   const subtotal = totalPrice();
   const shipping = subtotal >= 50000 ? 0 : 3000;
 
@@ -81,6 +76,16 @@ export default function CheckoutPage() {
     }
     return Math.min(d, subtotal);
   }, [selectedCoupon, subtotal]);
+
+  // 빈 장바구니 자동 리다이렉트 (마운트 후)
+  useEffect(() => {
+    if (mounted && items.length === 0) {
+      router.replace("/cart");
+    }
+  }, [mounted, items.length, router]);
+
+  if (!mounted) return null;
+  if (items.length === 0) return null;
 
   const maxPoint = Math.max(0, Math.min(me?.pointBalance ?? 0, subtotal - couponDiscount));
   const usedPoint = Math.max(0, Math.min(pointInput, maxPoint));
