@@ -5,7 +5,10 @@ import { prisma } from "@/lib/prisma";
 
 export async function GET() {
   const session = await getServerSession(authOptions);
-  if (!session?.user) return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
+  // 비회원도 결제 가능하도록 빈 데이터 반환 (401 미발생)
+  if (!session?.user) {
+    return NextResponse.json({ pointBalance: 0, coupons: [], isGuest: true });
+  }
   const userId = (session.user as any).id as string;
 
   const [user, userCoupons] = await Promise.all([
@@ -17,7 +20,7 @@ export async function GET() {
     }),
   ]);
 
-  if (!user) return NextResponse.json({ error: "회원 정보 없음" }, { status: 404 });
+  if (!user) return NextResponse.json({ pointBalance: 0, coupons: [], isGuest: true });
 
   const coupons = userCoupons
     .filter((uc) => uc.coupon.isActive && uc.coupon.validFrom <= new Date() && uc.coupon.validUntil >= new Date())

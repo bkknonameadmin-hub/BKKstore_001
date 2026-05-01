@@ -56,7 +56,28 @@ export const useCart = create<CartState>()(
       totalCount: () => get().items.reduce((sum, i) => sum + i.quantity, 0),
       totalPrice: () => get().items.reduce((sum, i) => sum + i.price * i.quantity, 0),
     }),
-    { name: "fishing-mall-cart-v2" }
+    {
+      name: "fishing-mall-cart-v2",
+      version: 2,
+      // v1(옵션 미지원) → v2(옵션 지원) 마이그레이션
+      migrate: (persisted: any, version) => {
+        if (version < 2 && persisted?.state?.items) {
+          const migrated = persisted.state.items.map((i: any) => ({
+            ...i,
+            variantId: i.variantId ?? null,
+            variantName: i.variantName ?? null,
+          }));
+          return { ...persisted.state, items: migrated };
+        }
+        return persisted?.state || persisted;
+      },
+      // 첫 로드 시 v1 키 자동 제거 (안 그러면 영원히 남음)
+      onRehydrateStorage: () => () => {
+        if (typeof window !== "undefined") {
+          try { window.localStorage.removeItem("fishing-mall-cart"); } catch {}
+        }
+      },
+    }
   )
 );
 

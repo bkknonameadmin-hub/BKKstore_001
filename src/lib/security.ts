@@ -36,20 +36,49 @@ export function checkPasswordStrength(pw: string): PasswordCheck {
   return { ok: true };
 }
 
-/** 클라이언트 IP / User-Agent 추출 (요청 컨텍스트에서) */
-export function getClientInfo(req?: NextRequest): { ip: string | null; userAgent: string | null } {
-  if (req) {
-    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
-      || req.headers.get("x-real-ip")
-      || null;
-    const userAgent = req.headers.get("user-agent");
+type HeaderLike =
+  | Headers
+  | { get?: (k: string) => string | null | undefined; [k: string]: any };
+
+function readHeader(h: HeaderLike, key: string): string | null {
+  if (!h) return null;
+  if (typeof (h as Headers).get === "function") {
+    return (h as Headers).get(key) ?? null;
+  }
+  // NextAuth authorize req.headers 는 plain object (lowercase 키)
+  const v = (h as any)[key.toLowerCase()] ?? (h as any)[key];
+  if (Array.isArray(v)) return v[0] ?? null;
+  return typeof v === "string" ? v : null;
+}
+
+/**
+ * 클라이언트 IP / User-Agent 추출
+ * - NextRequest, headers() 결과, 또는 NextAuth authorize 의 req.headers (plain obj) 모두 지원
+ */
+export function getClientInfo(reqOrHeaders?: NextRequest | HeaderLike): { ip: string | null; userAgent: string | null } {
+  // 1. 명시적으로 전달된 객체 사용
+  if (reqOrHeaders) {
+    const h: HeaderLike =
+      "headers" in (reqOrHeaders as any) && (reqOrHeaders as any).headers
+        ? (reqOrHeaders as any).headers
+        : (reqOrHeaders as HeaderLike);
+    const ip =
+      (readHeader(h, "x-forwarded-for")?.split(",")[0]?.trim()) ||
+      readHeader(h, "x-real-ip") ||
+      readHeader(h, "cf-connecting-ip") ||
+      null;
+    const userAgent = readHeader(h, "user-agent");
     return { ip, userAgent };
   }
-  // RSC / Route Handler 등에서 NextRequest 객체가 없는 경우
+
+  // 2. RSC / Route Handler 컨텍스트
   try {
     const h = headers();
     return {
-      ip: h.get("x-forwarded-for")?.split(",")[0]?.trim() || h.get("x-real-ip") || null,
+      ip: h.get("x-forwarded-for")?.split(",")[0]?.trim()
+        || h.get("x-real-ip")
+        || h.get("cf-connecting-ip")
+        || null,
       userAgent: h.get("user-agent"),
     };
   } catch {

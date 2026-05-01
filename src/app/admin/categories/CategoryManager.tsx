@@ -26,8 +26,8 @@ function buildTree(items: Category[]): Tree {
 
 export default function CategoryManager({ initial }: { initial: Category[] }) {
   const router = useRouter();
-  const [items] = useState(initial);
-  const tree = useMemo(() => buildTree(items), [items]);
+  // initial 은 router.refresh() 시 새 값으로 들어오므로 직접 사용
+  const tree = useMemo(() => buildTree(initial), [initial]);
 
   const [editing, setEditing] = useState<Category | null>(null);
   const [creating, setCreating] = useState<{ parentId: string | null } | null>(null);
@@ -81,7 +81,7 @@ export default function CategoryManager({ initial }: { initial: Category[] }) {
           <CategoryForm
             mode="create"
             initial={{ id: "", slug: "", name: "", parentId: creating.parentId, sortOrder: 0, productCount: 0 }}
-            parents={items.filter((c) => !c.parentId)}
+            parents={initial.filter((c) => !c.parentId)}
             onClose={() => setCreating(null)}
             onSaved={() => { setCreating(null); router.refresh(); }}
           />
@@ -90,7 +90,7 @@ export default function CategoryManager({ initial }: { initial: Category[] }) {
           <CategoryForm
             mode="edit"
             initial={editing}
-            parents={items.filter((c) => !c.parentId && c.id !== editing.id)}
+            parents={initial.filter((c) => !c.parentId && c.id !== editing.id)}
             onClose={() => setEditing(null)}
             onSaved={() => { setEditing(null); router.refresh(); }}
           />

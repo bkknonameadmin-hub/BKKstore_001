@@ -16,12 +16,13 @@ const providers: NextAuthOptions["providers"] = [
       email: { label: "이메일", type: "email" },
       password: { label: "비밀번호", type: "password" },
     },
-    async authorize(credentials) {
+    async authorize(credentials, req) {
       const email = credentials?.email?.toLowerCase().trim();
       const password = credentials?.password;
       if (!email || !password) return null;
 
-      const { ip, userAgent } = getClientInfo();
+      // NextAuth authorize 콜백의 req.headers 는 plain object
+      const { ip, userAgent } = getClientInfo(req?.headers as any);
 
       const blocked = await isLoginBlocked(email, ip);
       if (blocked.blocked) {

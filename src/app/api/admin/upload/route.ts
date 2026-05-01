@@ -1,12 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { writeFile, mkdir } from "node:fs/promises";
-import path from "node:path";
 import crypto from "node:crypto";
 import { assertAdminApi } from "@/lib/admin-guard";
-
-// 개발용: 로컬 파일시스템(/public/uploads) 에 저장
-// 운영 환경에서는 S3 / Cloudinary / Cloudflare R2 등 오브젝트 스토리지 사용 권장
-// (Vercel 등 서버리스 환경에서는 /public 에 쓰기 불가)
+import { getStorage } from "@/lib/storage";
 
 const ALLOWED = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 const MAX_BYTES = 5 * 1024 * 1024; // 5MB
@@ -24,13 +19,16 @@ export async function POST(req: NextRequest) {
 
     const buf = Buffer.from(await file.arrayBuffer());
     const ext = (file.name.split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "");
-    const fname = `${Date.now()}-${crypto.randomBytes(6).toString("hex")}.${ext}`;
+    const filename = `${Date.now()}-${crypto.randomBytes(6).toString("hex")}.${ext}`;
 
-    const uploadDir = path.join(process.cwd(), "public", "uploads");
-    await mkdir(uploadDir, { recursive: true });
-    await writeFile(path.join(uploadDir, fname), buf);
+    const result = await getStorage().upload({
+      buffer: buf,
+      filename,
+      contentType: file.type,
+      prefix: "products",
+    });
 
-    return NextResponse.json({ url: `/uploads/${fname}` });
+    return NextResponse.json({ url: result.url, key: result.key });
   } catch (e: any) {
     return NextResponse.json({ error: e.message || "업로드 실패" }, { status: 500 });
   }

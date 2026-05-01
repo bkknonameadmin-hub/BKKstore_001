@@ -134,7 +134,8 @@ export default function CheckoutPage() {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ orderNo: data.orderNo, amount: total, name: recipient, phone, items }),
         })).json();
-        startInicisPay(form);
+        const { startInicisPay } = await import("@/lib/payments/inicis-client");
+        await startInicisPay(form);
       } else if (provider === "NAVERPAY") {
         const naver = await (await fetch("/api/payments/naver/reserve", {
           method: "POST", headers: { "Content-Type": "application/json" },
@@ -310,18 +311,3 @@ export default function CheckoutPage() {
   );
 }
 
-function startInicisPay(form: Record<string, string>) {
-  const f = document.createElement("form");
-  f.method = "POST";
-  f.action = "about:blank";
-  f.target = "_self";
-  Object.entries(form).forEach(([k, v]) => {
-    const input = document.createElement("input");
-    input.type = "hidden"; input.name = k; input.value = String(v);
-    f.appendChild(input);
-  });
-  document.body.appendChild(f);
-  // @ts-ignore
-  if (window.INIStdPay) window.INIStdPay.pay(f.id || (f.id = "ini-pay-form"));
-  else alert("INIStdPay 스크립트가 로드되지 않았습니다. (테스트용 데모)");
-}

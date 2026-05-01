@@ -1,13 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { writeFile, mkdir } from "node:fs/promises";
-import path from "node:path";
 import crypto from "node:crypto";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { rateLimit, getClientInfo } from "@/lib/security";
-
-// 회원 전용 리뷰 이미지 업로드 (개발용 로컬 저장)
-// 운영 환경: S3 / Cloudflare R2 / Cloudinary 등 오브젝트 스토리지 사용 권장
+import { getStorage } from "@/lib/storage";
 
 const ALLOWED = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"];
 const MAX_BYTES = 8 * 1024 * 1024; // 8MB
@@ -36,13 +32,16 @@ export async function POST(req: NextRequest) {
 
     const buf = Buffer.from(await file.arrayBuffer());
     const ext = (file.name.split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "");
-    const fname = `${Date.now()}-${crypto.randomBytes(6).toString("hex")}.${ext}`;
+    const filename = `${Date.now()}-${crypto.randomBytes(6).toString("hex")}.${ext}`;
 
-    const uploadDir = path.join(process.cwd(), "public", "uploads", "reviews");
-    await mkdir(uploadDir, { recursive: true });
-    await writeFile(path.join(uploadDir, fname), buf);
+    const result = await getStorage().upload({
+      buffer: buf,
+      filename,
+      contentType: file.type,
+      prefix: "reviews",
+    });
 
-    return NextResponse.json({ url: `/uploads/reviews/${fname}` });
+    return NextResponse.json({ url: result.url, key: result.key });
   } catch (e: any) {
     return NextResponse.json({ error: e.message || "업로드 실패" }, { status: 500 });
   }
