@@ -4,12 +4,13 @@ import TestSendForm from "./TestSendForm";
 
 export const dynamic = "force-dynamic";
 
-const KEY_LABEL: Record<TemplateKey, { label: string; trigger: string; color: string }> = {
-  ORDER_PAID:        { label: "주문/결제 완료",   trigger: "결제 완료시 자동",         color: "bg-blue-50 text-blue-700" },
-  SHIPPING_STARTED:  { label: "배송 시작",         trigger: "관리자 → 발송 처리시 자동", color: "bg-indigo-50 text-indigo-700" },
-  DELIVERY_COMPLETED:{ label: "배송 완료",         trigger: "관리자 → 배송완료시 자동", color: "bg-emerald-50 text-emerald-700" },
-  ORDER_CANCELLED:   { label: "주문 취소",         trigger: "관리자 → 취소시 자동",     color: "bg-red-50 text-red-600" },
-  ORDER_REFUNDED:    { label: "환불 완료",         trigger: "관리자 → 환불시 자동",     color: "bg-purple-50 text-purple-700" },
+const KEY_LABEL: Record<TemplateKey, { label: string; trigger: string; color: string; recipient: "고객" | "관리자" }> = {
+  ORDER_PAID:        { label: "주문/결제 완료",   trigger: "결제 완료시 자동",         color: "bg-blue-50 text-blue-700",       recipient: "고객" },
+  SHIPPING_STARTED:  { label: "배송 시작",         trigger: "관리자 → 발송 처리시 자동", color: "bg-indigo-50 text-indigo-700",   recipient: "고객" },
+  DELIVERY_COMPLETED:{ label: "배송 완료",         trigger: "관리자 → 배송완료시 자동", color: "bg-emerald-50 text-emerald-700", recipient: "고객" },
+  ORDER_CANCELLED:   { label: "주문 취소",         trigger: "관리자 → 취소시 자동",     color: "bg-red-50 text-red-600",         recipient: "고객" },
+  ORDER_REFUNDED:    { label: "환불 완료",         trigger: "관리자 → 환불시 자동",     color: "bg-purple-50 text-purple-700",   recipient: "고객" },
+  ADMIN_NEW_ORDER:   { label: "📥 신규 주문 알림",  trigger: "결제 완료시 자동",         color: "bg-amber-50 text-amber-700",     recipient: "관리자" },
 };
 
 const isProviderConfigured =
@@ -17,7 +18,23 @@ const isProviderConfigured =
   !!process.env.ALIMTALK_USER_ID &&
   !!process.env.ALIMTALK_SENDER_KEY;
 
+function getAdminNotifyConfig() {
+  const phones = (process.env.ADMIN_NOTIFY_PHONE || "")
+    .split(",").map((s) => s.trim()).filter(Boolean);
+  const enabled = (process.env.ADMIN_NEW_ORDER_NOTIFY || "true").toLowerCase() !== "false";
+  const forceSms = (process.env.ADMIN_NEW_ORDER_FORCE_SMS || "").toLowerCase() === "true";
+  return { phones, enabled, forceSms };
+}
+
+function maskPhoneDisplay(p: string): string {
+  const n = p.replace(/[^0-9]/g, "");
+  if (n.length < 10) return p;
+  return `${n.slice(0, 3)}-****-${n.slice(-4)}`;
+}
+
 export default function AdminNotificationsPage() {
+  const adminNotify = getAdminNotifyConfig();
+
   return (
     <div className="space-y-4">
       <nav className="text-xs text-gray-500">
@@ -58,6 +75,75 @@ export default function AdminNotificationsPage() {
         </div>
       )}
 
+      {/* 관리자 신규 주문 알림 설정 */}
+      <section className="bg-white rounded border border-gray-200 p-5">
+        <div className="flex items-start justify-between mb-3">
+          <div>
+            <h2 className="font-bold text-sm">📥 관리자 신규 주문 알림</h2>
+            <p className="text-xs text-gray-500 mt-1">결제 완료시 관리자에게 자동으로 알림이 발송됩니다.</p>
+          </div>
+          <span className={`px-2 py-1 rounded text-xs font-bold ${
+            adminNotify.enabled && adminNotify.phones.length > 0
+              ? "bg-emerald-50 text-emerald-700"
+              : adminNotify.enabled
+              ? "bg-amber-50 text-amber-700"
+              : "bg-gray-100 text-gray-500"
+          }`}>
+            {!adminNotify.enabled
+              ? "OFF"
+              : adminNotify.phones.length > 0
+              ? `✓ ON · ${adminNotify.phones.length}명`
+              : "⚠ 휴대폰 미등록"}
+          </span>
+        </div>
+
+        <dl className="text-xs space-y-2 border-t border-gray-100 pt-3">
+          <div className="flex">
+            <dt className="w-32 text-gray-500">알림 활성화</dt>
+            <dd className="font-mono">{adminNotify.enabled ? "true" : "false"}</dd>
+          </div>
+          <div className="flex">
+            <dt className="w-32 text-gray-500">수신 휴대폰</dt>
+            <dd>
+              {adminNotify.phones.length === 0 ? (
+                <span className="text-gray-400">미등록 (ADMIN_NOTIFY_PHONE 환경변수 추가 필요)</span>
+              ) : (
+                <div className="space-y-0.5">
+                  {adminNotify.phones.map((p, i) => (
+                    <div key={i} className="font-mono">{maskPhoneDisplay(p)}</div>
+                  ))}
+                </div>
+              )}
+            </dd>
+          </div>
+          <div className="flex">
+            <dt className="w-32 text-gray-500">SMS 강제 발송</dt>
+            <dd className="font-mono">
+              {adminNotify.forceSms ? "true (알림톡과 별개로 SMS 추가)" : "false (알림톡만, 실패시 자동 SMS 폴백)"}
+            </dd>
+          </div>
+          <div className="flex">
+            <dt className="w-32 text-gray-500">발송 채널</dt>
+            <dd className="text-gray-700">
+              <div>📱 카카오 알림톡 (Aligo failover → SMS)</div>
+              <div>📧 이메일 (ADMIN_NOTIFY_EMAIL)</div>
+              <div>💬 Slack (SLACK_WEBHOOK_URL)</div>
+            </dd>
+          </div>
+        </dl>
+
+        <div className="mt-4 pt-3 border-t border-gray-100 bg-gray-50 -mx-5 -mb-5 px-5 py-3 rounded-b">
+          <p className="text-[11px] text-gray-500 leading-relaxed">
+            <b>설정 방법:</b> <code className="font-mono">.env</code> 파일에서 다음 환경변수를 수정하세요.
+          </p>
+          <pre className="mt-2 text-[11px] font-mono bg-white border border-gray-200 rounded p-2 overflow-x-auto">
+{`ADMIN_NOTIFY_PHONE="01012345678,01098765432"   # 콤마로 여러 명
+ADMIN_NEW_ORDER_NOTIFY="true"                   # false 로 끄기
+ADMIN_NEW_ORDER_FORCE_SMS="false"               # true: SMS 추가 발송`}
+          </pre>
+        </div>
+      </section>
+
       <section className="space-y-3">
         {(Object.keys(ALIMTALK_TEMPLATES) as TemplateKey[]).map((key) => {
           const tpl = ALIMTALK_TEMPLATES[key];
@@ -67,6 +153,7 @@ export default function AdminNotificationsPage() {
             name: "홍길동", orderNo: "ORD-20260501-XYZ12",
             amount: "85,000", method: "신용카드",
             courier: "CJ대한통운", trackingNo: "1234567890",
+            recipient: "홍길동", productSummary: "초경량 카본 루어대 외 2건",
           };
           const previewBody = tpl.body(sample);
 

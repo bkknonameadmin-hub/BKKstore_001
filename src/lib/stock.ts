@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { getLowStockThreshold, notifyAdmin } from "@/lib/notify";
+import { getLowStockThreshold, notifyAdmin, notifyAdminOrderReceived } from "@/lib/notify";
 import { notifyOrderPaid } from "@/lib/alimtalk";
 import { Prisma } from "@prisma/client";
 
@@ -127,6 +127,42 @@ export async function finalizeOrderPayment(args: {
   // 트랜잭션 완료 후 비동기 작업 (실패해도 결제 흐름 영향 없음)
   void checkAndNotifyLowStock(productIdsForCheck).catch(() => {});
   void sendOrderPaidAlimtalk(orderId).catch(() => {});
+  void sendAdminNewOrderAlert(orderId).catch(() => {});
+}
+
+/**
+ * 관리자에게 신규 주문 알림 (알림톡 + SMS + 이메일 + Slack)
+ */
+async function sendAdminNewOrderAlert(orderId: string) {
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    select: {
+      id: true, orderNo: true, recipient: true,
+      totalAmount: true, provider: true,
+      items: { select: { name: true, variantName: true, quantity: true } },
+    },
+  });
+  if (!order) return;
+
+  const PROVIDER_LABEL: Record<string, string> = {
+    TOSS: "토스페이먼츠", INICIS: "KG이니시스", NAVERPAY: "네이버페이",
+  };
+
+  const first = order.items[0];
+  const summary = first
+    ? `${first.name}${first.variantName ? `(${first.variantName})` : ""}` +
+      (order.items.length > 1 ? ` 외 ${order.items.length - 1}건` : "")
+    : "상품 없음";
+
+  await notifyAdminOrderReceived({
+    orderId: order.id,
+    orderNo: order.orderNo,
+    recipient: order.recipient,
+    totalAmount: order.totalAmount,
+    productSummary: summary,
+    method: order.provider ? PROVIDER_LABEL[order.provider] || order.provider : "결제",
+    itemCount: order.items.reduce((s, i) => s + i.quantity, 0),
+  });
 }
 
 /**

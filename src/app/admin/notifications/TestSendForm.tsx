@@ -2,11 +2,12 @@
 import { useState } from "react";
 
 const OPTIONS: { key: string; label: string }[] = [
-  { key: "ORDER_PAID", label: "주문/결제 완료" },
-  { key: "SHIPPING_STARTED", label: "배송 시작" },
-  { key: "DELIVERY_COMPLETED", label: "배송 완료" },
-  { key: "ORDER_CANCELLED", label: "주문 취소" },
-  { key: "ORDER_REFUNDED", label: "환불 완료" },
+  { key: "ORDER_PAID", label: "주문/결제 완료 (고객)" },
+  { key: "SHIPPING_STARTED", label: "배송 시작 (고객)" },
+  { key: "DELIVERY_COMPLETED", label: "배송 완료 (고객)" },
+  { key: "ORDER_CANCELLED", label: "주문 취소 (고객)" },
+  { key: "ORDER_REFUNDED", label: "환불 완료 (고객)" },
+  { key: "ADMIN_NEW_ORDER", label: "📥 신규 주문 (관리자)" },
 ];
 
 export default function TestSendForm() {

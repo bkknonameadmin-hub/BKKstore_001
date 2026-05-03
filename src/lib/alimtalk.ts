@@ -38,7 +38,8 @@ export type TemplateKey =
   | "SHIPPING_STARTED"
   | "DELIVERY_COMPLETED"
   | "ORDER_CANCELLED"
-  | "ORDER_REFUNDED";
+  | "ORDER_REFUNDED"
+  | "ADMIN_NEW_ORDER";
 
 type TemplateDef = {
   templateCode: string;     // 카카오 등록 템플릿 코드
@@ -121,6 +122,24 @@ export const ALIMTALK_TEMPLATES: Record<TemplateKey, TemplateDef> = {
 
 결제하신 카드/계좌로 영업일 기준 3~5일 이내 입금됩니다.
 이용에 불편을 드려 죄송합니다.`,
+  },
+
+  ADMIN_NEW_ORDER: {
+    templateCode: process.env.ALIMTALK_TPL_ADMIN_NEW_ORDER || "admin_new_order",
+    title: "신규 주문이 접수되었습니다",
+    body: (v) =>
+`[낚시몰] 신규 주문 접수
+
+▶ 주문번호: ${v.orderNo}
+▶ 주문자: ${v.recipient}
+▶ 결제금액: ${v.amount}원
+▶ 상품: ${v.productSummary}
+▶ 결제수단: ${v.method}
+
+관리자 페이지에서 확인해주세요.`,
+    buttons: [
+      { name: "주문 확인", type: "WL", url: "{adminOrderUrl}" },
+    ],
   },
 };
 
@@ -280,6 +299,35 @@ export async function notifyOrderRefunded(order: OrderForNotify) {
       name: order.recipient,
       orderNo: order.orderNo,
       amount: formatKRW(order.totalAmount).replace("원", ""),
+    },
+  });
+}
+
+/**
+ * 관리자에게 신규 주문 알림 (단일 휴대폰 기준)
+ * - 카카오톡 알림톡으로 전송 + Aligo failover 로 자동 SMS 폴백
+ */
+export async function notifyAdminNewOrder(args: {
+  to: string;
+  orderId: string;
+  orderNo: string;
+  recipient: string;
+  totalAmount: number;
+  productSummary: string;
+  method: string;
+}) {
+  return sendAlimtalk({
+    to: args.to,
+    template: "ADMIN_NEW_ORDER",
+    variables: {
+      orderNo: args.orderNo,
+      recipient: args.recipient,
+      amount: formatKRW(args.totalAmount).replace("원", ""),
+      productSummary: args.productSummary,
+      method: args.method,
+    },
+    buttonUrls: {
+      adminOrderUrl: `${siteUrl()}/admin/orders/${args.orderId}`,
     },
   });
 }

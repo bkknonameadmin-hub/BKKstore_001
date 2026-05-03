@@ -5,7 +5,7 @@ import { sendAlimtalk, type TemplateKey } from "@/lib/alimtalk";
 
 const Schema = z.object({
   phone: z.string().min(10).max(20),
-  template: z.enum(["ORDER_PAID", "SHIPPING_STARTED", "DELIVERY_COMPLETED", "ORDER_CANCELLED", "ORDER_REFUNDED"]),
+  template: z.enum(["ORDER_PAID", "SHIPPING_STARTED", "DELIVERY_COMPLETED", "ORDER_CANCELLED", "ORDER_REFUNDED", "ADMIN_NEW_ORDER"]),
 });
 
 export async function POST(req: NextRequest) {
@@ -20,10 +20,13 @@ export async function POST(req: NextRequest) {
       name: "테스트", orderNo: "ORD-20260501-XYZ12",
       amount: "85,000", method: "신용카드",
       courier: "CJ대한통운", trackingNo: "1234567890",
+      recipient: "테스트", productSummary: "초경량 카본 루어대 외 2건",
     };
+    const SITE = process.env.NEXTAUTH_URL || "http://localhost:3000";
     const buttonUrls: Record<string, string> = {
-      trackingUrl: `${process.env.NEXTAUTH_URL || "http://localhost:3000"}/orders/${sample.orderNo}/tracking`,
-      reviewUrl: `${process.env.NEXTAUTH_URL || "http://localhost:3000"}/mypage/reviews`,
+      trackingUrl: `${SITE}/orders/${sample.orderNo}/tracking`,
+      reviewUrl: `${SITE}/mypage/reviews`,
+      adminOrderUrl: `${SITE}/admin/orders/sample-id`,
     };
 
     const result = await sendAlimtalk({
