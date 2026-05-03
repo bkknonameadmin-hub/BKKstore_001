@@ -8,3 +8,10 @@ out
 .DS_Store
 .idea
 .vscode
+
+# TypeScript / build artifacts
+tsconfig.tsbuildinfo
+*.tsbuildinfo
+
+# Sentry
+.sentryclirc

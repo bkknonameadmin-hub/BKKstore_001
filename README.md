@@ -382,14 +382,53 @@ npm run db:migrate:deploy
 # 6. /api/health?deep=1 호출하여 모든 의존성 정상 확인
 ```
 
+## Sentry 에러 트래킹 (v7 추가)
+
+### 자동 캡쳐 범위
+- 클라이언트(브라우저) 미처리 예외 + 세션 리플레이 (에러 발생 세션만 100%)
+- 서버(Node) Route Handler / RSC throw 자동 캡쳐 (`onRequestError` hook)
+- `global-error.tsx` 루트 레이아웃 에러 안전 화면 + 캡쳐
+- `logger.error()` / `logger.warn()` 자동 전파 (warn → breadcrumb)
+- Prisma 쿼리 자동 트레이싱
+
+### 보안
+- `sendDefaultPii: false` (개인정보 미전송이 기본)
+- 요청 헤더 중 `cookie / authorization / x-cron-token` 자동 제거
+- `?token=...` 등 민감 쿼리 파라미터 마스킹
+- 세션 리플레이는 `maskAllText + blockAllMedia` 적용
+- `SENTRY_INCLUDE_PII=true` 환경변수 명시할 때만 사용자 이메일 전송
+
+### 노이즈 필터
+다음은 무시 (의미 없는 알림 방지):
+- 클라이언트: `Network Error / Failed to fetch / ResizeObserver / ChunkLoadError / CredentialsSignin`
+- 서버: `OutOfStockError`(비즈니스), Prisma `P2025`(record not found)
+
+### 광고차단기 우회
+`tunnelRoute: "/monitoring"` 자동 라우트 → uBlock 등이 sentry.io 도메인을 막아도 캡쳐 가능
+
+### 테스트
+관리자 로그인 후:
+```bash
+curl http://localhost:3000/api/admin/sentry-test?type=message
+curl http://localhost:3000/api/admin/sentry-test?type=error
+curl http://localhost:3000/api/admin/sentry-test?type=throw
+curl http://localhost:3000/api/admin/sentry-test?type=logger
+```
+
+### 도입 절차
+1. https://sentry.io 가입 → 프로젝트 생성 (Next.js 선택)
+2. `.env`에 `SENTRY_DSN` / `NEXT_PUBLIC_SENTRY_DSN` 입력 (보통 같은 값)
+3. 소스맵 업로드는 선택 — `SENTRY_ORG / SENTRY_PROJECT / SENTRY_AUTH_TOKEN` 추가시 빌드 후 자동 업로드
+4. CI에서 `SENTRY_RELEASE=$GITHUB_SHA` 주입하면 릴리스별 에러 추적 가능
+
+DSN 미설정 시 Sentry 코드는 no-op으로 동작 (빌드/런타임 영향 없음).
+
 ## 다음 단계로 추가하면 좋은 기능
 
 - [ ] 2단계 인증 (TOTP / OTP App)
 - [ ] 이메일 인증 (가입시)
-- [ ] 매출 정산 리포트 (월별 엑셀 다운로드)
 - [ ] 사이즈 옵션 (색상 + 사이즈 조합 SKU)
 - [ ] 알림 수신 동의 관리 (회원별 ON/OFF)
-- [ ] Sentry 에러 트래킹
 - [ ] Redis 도입 (세션 캐시, 분산 레이트리밋)
 - [ ] BullMQ 백그라운드 큐 (alimtalk 재시도)
 - [ ] Postgres tsvector + 형태소 분석 검색
