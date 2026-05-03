@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
+import { toast } from "@/store/toast";
 
 function checkPasswordClient(pw: string): { score: number; label: string; color: string; reasons: string[] } {
   const reasons: string[] = [];
@@ -43,7 +44,7 @@ export default function RegisterPage() {
     const data = await res.json();
     setLoading(false);
     if (!res.ok) { setError(data.error || "가입 실패"); return; }
-    alert("가입이 완료되었습니다. 가입 축하 적립금 1,000원이 지급되었어요!");
+    toast.success("가입 완료! 적립금 1,000원이 지급되었어요 🎁");
     router.push("/login");
   };
 

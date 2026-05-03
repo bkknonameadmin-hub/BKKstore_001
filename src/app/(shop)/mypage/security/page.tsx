@@ -5,6 +5,8 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import ChangePasswordForm from "./ChangePasswordForm";
 import PhoneVerifySection from "./PhoneVerifySection";
+import TotpSection from "./TotpSection";
+import EmailVerifySection from "./EmailVerifySection";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +21,8 @@ export default async function SecurityPage() {
       select: {
         email: true, phone: true, phoneVerifiedAt: true,
         passwordHash: true, passwordChangedAt: true, createdAt: true,
+        totpEnabled: true, totpEnabledAt: true,
+        emailVerified: true, emailVerifySentAt: true,
       },
     }),
     prisma.loginLog.findMany({
@@ -75,6 +79,22 @@ export default async function SecurityPage() {
         </dl>
       </section>
 
+      {/* 이메일 인증 */}
+      <section className="border border-gray-200 rounded p-5 bg-white">
+        <h2 className="font-bold text-sm pb-3 mb-3 border-b border-gray-100 flex items-center justify-between">
+          <span>이메일 인증</span>
+          {user.emailVerified && (
+            <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 text-[11px] font-bold">인증 완료</span>
+          )}
+        </h2>
+        <EmailVerifySection
+          email={user.email}
+          verified={!!user.emailVerified}
+          verifiedAt={user.emailVerified?.toISOString() || null}
+          sentAt={user.emailVerifySentAt?.toISOString() || null}
+        />
+      </section>
+
       {/* 휴대폰 인증 */}
       <section className="border border-gray-200 rounded p-5 bg-white">
         <h2 className="font-bold text-sm pb-3 mb-3 border-b border-gray-100 flex items-center justify-between">
@@ -88,6 +108,17 @@ export default async function SecurityPage() {
           verified={!!user.phoneVerifiedAt}
           verifiedAt={user.phoneVerifiedAt?.toISOString() || null}
         />
+      </section>
+
+      {/* 2단계 인증 (TOTP) */}
+      <section className="border border-gray-200 rounded p-5 bg-white">
+        <h2 className="font-bold text-sm pb-3 mb-3 border-b border-gray-100 flex items-center justify-between">
+          <span>🔐 2단계 인증 (OTP)</span>
+          {user.totpEnabled && (
+            <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 text-[11px] font-bold">활성화됨</span>
+          )}
+        </h2>
+        <TotpSection enabled={user.totpEnabled} enabledAt={user.totpEnabledAt?.toISOString() || null} />
       </section>
 
       {/* 비밀번호 변경 (소셜 전용 회원은 숨김) */}

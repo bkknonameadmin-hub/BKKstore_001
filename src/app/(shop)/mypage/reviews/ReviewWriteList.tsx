@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { toast } from "@/store/toast";
 
 type Item = {
   orderItemId: string;
@@ -69,7 +70,7 @@ function ReviewWriteForm({
     const files = e.target.files;
     if (!files || files.length === 0) return;
     if (images.length + files.length > 5) {
-      alert("최대 5장까지 업로드할 수 있습니다.");
+      toast.warning("최대 5장까지 업로드할 수 있습니다.");
       return;
     }
     setUploading(true);
@@ -85,7 +86,7 @@ function ReviewWriteForm({
       }
       setImages((prev) => [...prev, ...uploaded]);
     } catch (e: any) {
-      alert(e.message);
+      toast.error(e.message);
     } finally {
       setUploading(false);
       e.target.value = "";
@@ -104,7 +105,7 @@ function ReviewWriteForm({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "작성 실패");
-      alert("리뷰가 등록되었습니다. 감사합니다!");
+      toast.success("리뷰가 등록되었습니다. 감사합니다!");
       router.refresh();
     } catch (e: any) {
       setErr(e.message);

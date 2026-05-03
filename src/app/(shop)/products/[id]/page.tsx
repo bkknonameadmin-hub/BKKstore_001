@@ -10,6 +10,8 @@ import WishlistButton from "@/components/WishlistButton";
 import ProductReviewSection from "@/components/ProductReviewSection";
 import ProductJsonLd from "@/components/ProductJsonLd";
 import ViewItemTracker from "@/components/ViewItemTracker";
+import ImageGallery from "@/components/ImageGallery";
+import ProductInfoTabs from "@/components/ProductInfoTabs";
 
 const SITE = process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXTAUTH_URL || "http://localhost:3000";
 const SITE_NAME = process.env.NEXT_PUBLIC_BUSINESS_NAME || "낚시몰";
@@ -122,27 +124,16 @@ export default async function ProductDetailPage({ params }: { params: { id: stri
         <span className="text-gray-700">{product.name}</span>
       </nav>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-10">
         {/* 이미지 */}
-        <div>
-          <div className="aspect-square bg-gray-100 rounded border border-gray-200 overflow-hidden">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={product.thumbnail || "/images/placeholder.svg"} alt={product.name} className="w-full h-full object-cover" />
-          </div>
-          {product.images.length > 1 && (
-            <div className="mt-3 grid grid-cols-5 gap-2">
-              {product.images.slice(0, 5).map((src, i) => (
-                <div key={i} className="aspect-square bg-gray-100 rounded border border-gray-200 overflow-hidden">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={src} alt="" className="w-full h-full object-cover" />
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        <ImageGallery
+          thumbnail={product.thumbnail}
+          images={product.images}
+          alt={product.name}
+        />
 
-        {/* 상품 정보 */}
-        <div>
+        {/* 상품 정보 (데스크톱에서 sticky) */}
+        <div className="lg:sticky lg:top-24 lg:self-start">
           <div className="flex items-start justify-between gap-2">
             <div className="flex-1">
               {product.brand && <div className="text-sm text-gray-500">{product.brand}</div>}
@@ -210,18 +201,48 @@ export default async function ProductDetailPage({ params }: { params: { id: stri
         </div>
       </div>
 
+      {/* 탭 (sticky) */}
+      <div className="mt-12">
+        <ProductInfoTabs />
+      </div>
+
       {/* 상품 상세 설명 */}
-      <section className="mt-14">
-        <div className="border-b border-gray-200 mb-6">
-          <h2 className="inline-block px-4 py-3 border-b-2 border-brand-500 font-bold">상품상세정보</h2>
-        </div>
-        <div className="text-sm text-gray-700 leading-relaxed whitespace-pre-line min-h-[120px]">
+      <section id="section-detail" className="pt-8 scroll-mt-24">
+        <h2 className="text-lg font-bold mb-4 text-gray-900">상품상세정보</h2>
+        <div className="text-sm text-gray-700 leading-relaxed whitespace-pre-line min-h-[120px] py-4">
           {product.description || "상세 설명이 등록되지 않았습니다."}
         </div>
       </section>
 
+      {/* 배송 / 반품 안내 */}
+      <section id="section-shipping" className="pt-12 scroll-mt-24">
+        <h2 className="text-lg font-bold mb-4 text-gray-900">배송 / 교환·반품 안내</h2>
+        <div className="grid md:grid-cols-2 gap-4 text-sm">
+          <div className="card p-5">
+            <h3 className="font-bold mb-2 text-gray-800">🚚 배송 안내</h3>
+            <ul className="space-y-1.5 text-gray-600">
+              <li>• 평일 14시 이전 결제 시 당일 출고</li>
+              <li>• 배송비 3,000원 (5만원 이상 무료)</li>
+              <li>• 도서/산간 지역 추가 배송비 발생 가능</li>
+              <li>• 평균 1~3일 소요 (CJ대한통운)</li>
+            </ul>
+          </div>
+          <div className="card p-5">
+            <h3 className="font-bold mb-2 text-gray-800">↩ 교환·반품</h3>
+            <ul className="space-y-1.5 text-gray-600">
+              <li>• 상품 수령 후 7일 이내 신청</li>
+              <li>• 단순 변심 반품 배송비 5,000원 (왕복)</li>
+              <li>• 상품 불량/오배송은 무료 교환·반품</li>
+              <li>• 사용/훼손/포장 개봉 후 반품 불가</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
       {/* 리뷰 섹션 */}
-      <ProductReviewSection productId={product.id} />
+      <section id="section-reviews" className="pt-12 scroll-mt-24">
+        <ProductReviewSection productId={product.id} />
+      </section>
     </div>
   );
 }

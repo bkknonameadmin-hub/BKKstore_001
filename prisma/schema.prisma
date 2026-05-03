@@ -43,6 +43,13 @@ model User {
   dormantAt         DateTime?
   withdrawnAt       DateTime?
   withdrawReason    String?
+  /// 2단계 인증 (TOTP)
+  totpSecretEnc     String?                       // AES-256-GCM 암호화된 secret
+  totpEnabled       Boolean    @default(false)
+  totpEnabledAt     DateTime?
+  totpBackupCodes   String[]   @default([])       // bcrypt 해시 (1회 사용)
+  /// 이메일 인증 발송 시각 (가입후 N일 미인증시 알림)
+  emailVerifySentAt DateTime?
   createdAt         DateTime   @default(now())
   updatedAt         DateTime   @updatedAt
 
@@ -55,9 +62,11 @@ model User {
   loginLogs    LoginLog[]
   accounts     Account[]
   sessions     Session[]
-  refundRequests  RefundRequest[]
-  returnRequests  ReturnRequest[]
-  auditLogs       AuditLog[]      @relation("ActorAudit")
+  refundRequests   RefundRequest[]
+  returnRequests   ReturnRequest[]
+  auditLogs        AuditLog[]      @relation("ActorAudit")
+  productQuestions ProductQuestion[]
+  supportTickets   SupportTicket[]
 
   @@index([status])
   @@index([phoneHash])
@@ -176,6 +185,7 @@ model Product {
   orderItems OrderItem[]
   reviews    Review[]
   wishlist   Wishlist[]
+  questions  ProductQuestion[]
 
   @@index([categoryId, isActive])
   @@index([isActive, isFeatured])
@@ -522,4 +532,109 @@ model ReturnRequestItem {
   orderItem     OrderItem     @relation(fields: [orderItemId], references: [id])
 
   @@index([returnRequestId])
+}
+
+/// 상품 Q&A
+model ProductQuestion {
+  id         String   @id @default(cuid())
+  userId     String?
+  productId  String
+  authorName String                                    // 마스킹 표시용
+  isPrivate  Boolean  @default(false)                  // 비공개 (관리자 + 작성자만)
+  question   String
+  answer     String?
+  answeredAt DateTime?
+  answeredBy String?
+  isHidden   Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user    User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId, isHidden, createdAt])
+  @@index([userId, createdAt])
+}
+
+enum SupportStatus {
+  OPEN          // 회원 신규 문의
+  PENDING       // 관리자 확인중
+  ANSWERED      // 답변 완료 (회원 추가 답글 가능)
+  CLOSED        // 종료
+}
+
+enum SupportCategory {
+  ORDER         // 주문 관련
+  PAYMENT       // 결제
+  DELIVERY      // 배송
+  PRODUCT       // 상품 문의
+  REFUND        // 환불/반품
+  ACCOUNT       // 계정
+  ETC           // 기타
+}
+
+/// 1:1 문의 티켓
+model SupportTicket {
+  id           String          @id @default(cuid())
+  ticketNo     String          @unique
+  userId       String?
+  guestEmail   String?
+  guestPhone   String?
+  guestName    String?
+  category     SupportCategory @default(ETC)
+  subject      String
+  status       SupportStatus   @default(OPEN)
+  orderId      String?
+  assignedTo   String?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  closedAt     DateTime?
+  lastMessageAt DateTime       @default(now())
+
+  user     User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
+  messages SupportMessage[]
+
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+  @@index([ticketNo])
+}
+
+/// 사이트 설정 (싱글톤 — id="default")
+/// 관리자가 프론트 노출 콘텐츠를 코드 수정 없이 편집할 수 있게 해주는 키-값 저장소
+model SiteSettings {
+  id        String   @id @default("default")
+  /// 히어로 캐러셀 슬라이드 배열 — { eyebrow, title, subtitle, cta, href, bgClass, image? }
+  heroSlides       Json   @default("[]")
+  /// 사이드 배너 (홈 우측 2칸) — [{ eyebrow, title, href, bgClass, emoji }]
+  sideBanners      Json   @default("[]")
+  /// 상단 고지 띠 (Header 위) — { enabled, text, href, bgColor, fgColor }
+  noticeBar        Json   @default("{}")
+  /// 푸터 사업자 정보 (env 오버라이드)
+  footer           Json   @default("{}")
+  /// 무료배송 기준 금액 (원)
+  freeShippingMin  Int    @default(50000)
+  /// 베스트/추천 섹션 노출 토글
+  showBestSection     Boolean @default(true)
+  showFeaturedSection Boolean @default(true)
+  showNewSection      Boolean @default(true)
+  /// 카테고리 쇼트컷 노출
+  showCategoryShortcut Boolean @default(true)
+
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+}
+
+model SupportMessage {
+  id          String   @id @default(cuid())
+  ticketId    String
+  authorType  String                            // CUSTOMER | ADMIN
+  authorId    String?
+  authorName  String
+  content     String
+  attachments String[] @default([])
+  createdAt   DateTime @default(now())
+
+  ticket SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId, createdAt])
 }

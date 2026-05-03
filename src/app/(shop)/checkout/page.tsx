@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useCart } from "@/store/cart";
+import { toast } from "@/store/toast";
 import { formatKRW } from "@/lib/utils";
 import AddressSearch from "@/components/AddressSearch";
 
@@ -94,11 +95,11 @@ export default function CheckoutPage() {
 
   const submit = async () => {
     if (!recipient || !phone || !zipCode || !address1) {
-      alert("배송 정보를 모두 입력해주세요.");
+      toast.warning("배송 정보를 모두 입력해주세요.");
       return;
     }
     if (!agree) {
-      alert("주문 내용을 확인하고 동의해주세요.");
+      toast.warning("주문 내용을 확인하고 동의해주세요.");
       return;
     }
 
@@ -144,7 +145,7 @@ export default function CheckoutPage() {
         if (naver.redirectUrl) window.location.href = naver.redirectUrl;
       }
     } catch (e: any) {
-      alert(e.message || "주문 처리 중 오류가 발생했습니다.");
+      toast.error(e.message || "주문 처리 중 오류가 발생했습니다.");
       setLoading(false);
     }
   };

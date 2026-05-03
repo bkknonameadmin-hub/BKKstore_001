@@ -1,3 +1,4 @@
+"use client";
 import { create } from "zustand";
 
 export type ToastKind = "info" | "success" | "error" | "warning";

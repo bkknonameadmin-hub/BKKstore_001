@@ -68,6 +68,17 @@ export async function POST(req: NextRequest) {
       return u;
     });
 
+    // 이메일 인증 메일 비동기 발송 (실패해도 가입은 완료)
+    void (async () => {
+      try {
+        const { sendVerifyEmail } = await import("@/lib/email-verify");
+        const r = await sendVerifyEmail(user.email, user.name);
+        if (r.ok) {
+          await prisma.user.update({ where: { id: user.id }, data: { emailVerifySentAt: new Date() } });
+        }
+      } catch {}
+    })();
+
     return NextResponse.json(user);
   } catch (e: any) {
     if (e?.issues) return NextResponse.json({ error: e.issues[0]?.message || "유효성 오류" }, { status: 400 });

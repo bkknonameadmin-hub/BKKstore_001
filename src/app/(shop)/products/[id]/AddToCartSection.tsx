@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useCart } from "@/store/cart";
+import { toast } from "@/store/toast";
 import { formatKRW } from "@/lib/utils";
 
 type Variant = {
@@ -73,7 +74,7 @@ export default function AddToCartSection({ product, variants }: Props) {
 
   const submit = (goCheckout: boolean) => {
     if (hasVariants) {
-      if (selected.length === 0) { alert("옵션을 선택해주세요."); return; }
+      if (selected.length === 0) { toast.warning("옵션을 선택해주세요."); return; }
       for (const s of selected) {
         add({
           productId: product.id,
@@ -100,7 +101,7 @@ export default function AddToCartSection({ product, variants }: Props) {
       });
     }
     if (goCheckout) router.push("/cart");
-    else alert("장바구니에 담았습니다.");
+    else toast.success("장바구니에 담았어요!", { href: "/cart", hrefLabel: "장바구니" });
   };
 
   return (
