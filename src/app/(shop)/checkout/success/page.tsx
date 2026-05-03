@@ -1,15 +1,41 @@
 "use client";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useCart } from "@/store/cart";
+import { trackPurchase } from "@/lib/analytics";
 
 export default function CheckoutSuccessPage() {
   const sp = useSearchParams();
   const orderNo = sp.get("orderNo");
+  const items = useCart((s) => s.items);
+  const totalPrice = useCart((s) => s.totalPrice);
   const clear = useCart((s) => s.clear);
+  const tracked = useRef(false);
 
-  useEffect(() => { clear(); }, [clear]);
+  useEffect(() => {
+    if (tracked.current) return;
+    tracked.current = true;
+
+    // GA4 purchase 이벤트 — 카트가 비어있지 않다면 트래킹
+    if (orderNo && items.length > 0) {
+      trackPurchase({
+        transaction_id: orderNo,
+        value: totalPrice(),
+        items: items.map((i) => ({
+          item_id: i.productId,
+          item_name: i.name,
+          item_variant: i.variantName || undefined,
+          price: i.price,
+          quantity: i.quantity,
+        })),
+      });
+    }
+
+    // 트래킹 후 카트 비우기
+    clear();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="container-mall py-20 max-w-lg text-center">

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getServerSession } from "next-auth";
@@ -7,6 +8,45 @@ import { calcDiscountRate, formatKRW } from "@/lib/utils";
 import AddToCartSection from "./AddToCartSection";
 import WishlistButton from "@/components/WishlistButton";
 import ProductReviewSection from "@/components/ProductReviewSection";
+import ProductJsonLd from "@/components/ProductJsonLd";
+import ViewItemTracker from "@/components/ViewItemTracker";
+
+const SITE = process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXTAUTH_URL || "http://localhost:3000";
+const SITE_NAME = process.env.NEXT_PUBLIC_BUSINESS_NAME || "낚시몰";
+
+export async function generateMetadata({ params }: { params: { id: string } }): Promise<Metadata> {
+  const product = await prisma.product
+    .findUnique({
+      where: { id: params.id },
+      select: { name: true, brand: true, description: true, thumbnail: true, salePrice: true, price: true, isActive: true, category: { select: { name: true } } },
+    })
+    .catch(() => null);
+
+  if (!product || !product.isActive) {
+    return { title: "상품을 찾을 수 없습니다", robots: { index: false } };
+  }
+
+  const finalPrice = product.salePrice ?? product.price;
+  const desc = (product.description || `${product.name} - ${product.category.name} | ${SITE_NAME}`).slice(0, 160);
+  const titleLine = product.brand ? `${product.brand} ${product.name}` : product.name;
+  const image = product.thumbnail
+    ? (product.thumbnail.startsWith("http") ? product.thumbnail : `${SITE}${product.thumbnail}`)
+    : `${SITE}/images/og-default.png`;
+
+  return {
+    title: titleLine,
+    description: `${desc} - ${finalPrice.toLocaleString()}원`,
+    openGraph: {
+      type: "website",
+      title: `${titleLine} | ${SITE_NAME}`,
+      description: desc,
+      images: [{ url: image, width: 1200, height: 630, alt: product.name }],
+      url: `${SITE}/products/${params.id}`,
+    },
+    twitter: { card: "summary_large_image", title: titleLine, description: desc, images: [image] },
+    alternates: { canonical: `${SITE}/products/${params.id}` },
+  };
+}
 
 export default async function ProductDetailPage({ params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
@@ -42,8 +82,36 @@ export default async function ProductDetailPage({ params }: { params: { id: stri
     _count: { rating: true },
   }).catch(() => ({ _avg: { rating: null }, _count: { rating: 0 } }));
 
+  const totalStock = product.variants.length > 0
+    ? product.variants.reduce((s, v) => s + v.stock, 0)
+    : product.stock;
+
   return (
     <div className="container-mall py-6">
+      {/* SEO 구조화 데이터 */}
+      <ProductJsonLd
+        id={product.id}
+        name={product.name}
+        description={product.description}
+        brand={product.brand}
+        sku={product.sku}
+        thumbnail={product.thumbnail}
+        images={product.images}
+        price={product.price}
+        salePrice={product.salePrice}
+        inStock={totalStock > 0}
+        ratingValue={ratingAgg._avg.rating || undefined}
+        reviewCount={ratingAgg._count.rating}
+      />
+      {/* GA4 view_item 이벤트 */}
+      <ViewItemTracker
+        id={product.id}
+        name={product.name}
+        brand={product.brand}
+        category={product.category.name}
+        price={finalPrice}
+      />
+
       <nav className="text-xs text-gray-500 mb-4">
         <Link href="/" className="hover:text-brand-600">홈</Link>
         <span className="mx-1">›</span>
