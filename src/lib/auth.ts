@@ -6,6 +6,7 @@ import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { isLoginBlocked, logLoginAttempt, getClientInfo } from "@/lib/security";
+import { verifyTotp, decryptTotpSecret, verifyBackupCode } from "@/lib/totp";
 
 const SIGNUP_BONUS_POINT = 1000;
 
@@ -15,10 +16,12 @@ const providers: NextAuthOptions["providers"] = [
     credentials: {
       email: { label: "이메일", type: "email" },
       password: { label: "비밀번호", type: "password" },
+      otpCode: { label: "OTP 코드 (6자리) 또는 백업코드", type: "text" },
     },
     async authorize(credentials, req) {
       const email = credentials?.email?.toLowerCase().trim();
       const password = credentials?.password;
+      const otpCode = (credentials?.otpCode || "").trim();
       if (!email || !password) return null;
 
       // NextAuth authorize 콜백의 req.headers 는 plain object
@@ -50,6 +53,52 @@ const providers: NextAuthOptions["providers"] = [
       if (!ok) {
         await logLoginAttempt({ email, userId: user.id, success: false, reason: "wrong_password", ip, userAgent });
         return null;
+      }
+
+      // 2단계 인증 (TOTP) — 활성화된 회원은 OTP 6자리 또는 백업코드 필수
+      if ((user as any).totpEnabled && (user as any).totpSecretEnc) {
+        if (!otpCode) {
+          // 클라이언트가 이 에러를 인식해서 OTP 입력 단계를 노출
+          throw new Error("OTP_REQUIRED");
+        }
+
+        const digitsOnly = otpCode.replace(/\D/g, "");
+        let otpOk = false;
+        let usedBackup = false;
+        let backupIdx = -1;
+
+        if (/^\d{6}$/.test(digitsOnly)) {
+          // TOTP 6자리 코드
+          try {
+            const secret = decryptTotpSecret((user as any).totpSecretEnc as string);
+            otpOk = verifyTotp(digitsOnly, secret);
+          } catch {
+            otpOk = false;
+          }
+        }
+
+        if (!otpOk) {
+          // 백업코드(XXXX-XXXX) 시도
+          const hashes = ((user as any).totpBackupCodes as string[]) || [];
+          if (hashes.length > 0) {
+            backupIdx = await verifyBackupCode(otpCode, hashes);
+            if (backupIdx >= 0) {
+              otpOk = true;
+              usedBackup = true;
+            }
+          }
+        }
+
+        if (!otpOk) {
+          await logLoginAttempt({ email, userId: user.id, success: false, reason: "wrong_otp", ip, userAgent });
+          throw new Error("OTP_INVALID");
+        }
+
+        // 사용된 백업코드는 1회용 — 즉시 제거
+        if (usedBackup && backupIdx >= 0) {
+          const remaining = ((user as any).totpBackupCodes as string[]).filter((_, i) => i !== backupIdx);
+          await prisma.user.update({ where: { id: user.id }, data: { totpBackupCodes: remaining } as any });
+        }
       }
 
       // 휴면 → 활성 자동 복귀 + lastLoginAt 갱신

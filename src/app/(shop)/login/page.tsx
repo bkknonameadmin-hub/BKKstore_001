@@ -10,19 +10,37 @@ export default function LoginPage() {
   const callbackUrl = sp.get("callbackUrl") || "/";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [otpCode, setOtpCode] = useState("");
+  const [otpStep, setOtpStep] = useState(false); // true 면 OTP 입력 단계
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true); setError("");
-    const res = await signIn("credentials", { redirect: false, email, password });
+    const res = await signIn("credentials", { redirect: false, email, password, otpCode });
     setLoading(false);
     if (res?.error) {
-      setError(res.error.includes("로그인 시도") ? res.error : "이메일 또는 비밀번호가 올바르지 않습니다.");
+      if (res.error === "OTP_REQUIRED") {
+        // 2FA 활성 회원: OTP 입력 단계로 전환
+        setOtpStep(true);
+        setError("");
+      } else if (res.error === "OTP_INVALID") {
+        setError("OTP 코드가 올바르지 않습니다. 인증 앱의 6자리 코드 또는 백업코드를 입력해주세요.");
+      } else if (res.error.includes("로그인 시도") || res.error.includes("탈퇴") || res.error.includes("정지")) {
+        setError(res.error);
+      } else {
+        setError("이메일 또는 비밀번호가 올바르지 않습니다.");
+      }
     } else {
       router.push(callbackUrl);
     }
+  };
+
+  const resetOtp = () => {
+    setOtpStep(false);
+    setOtpCode("");
+    setError("");
   };
 
   const social = (provider: "naver" | "kakao") => {
@@ -39,6 +57,7 @@ export default function LoginPage() {
           <input
             type="email" required className="input h-11" autoComplete="email"
             value={email} onChange={(e) => setEmail(e.target.value)}
+            disabled={otpStep}
           />
         </div>
         <div>
@@ -46,11 +65,36 @@ export default function LoginPage() {
           <input
             type="password" required className="input h-11" autoComplete="current-password"
             value={password} onChange={(e) => setPassword(e.target.value)}
+            disabled={otpStep}
           />
         </div>
+
+        {otpStep && (
+          <div className="bg-amber-50 border border-amber-200 rounded p-3 space-y-2">
+            <label className="label text-amber-800">
+              🔐 2단계 인증 코드
+            </label>
+            <input
+              type="text" inputMode="text" autoComplete="one-time-code"
+              className="input h-11 font-mono tracking-widest"
+              placeholder="6자리 OTP 또는 XXXX-XXXX 백업코드"
+              value={otpCode}
+              onChange={(e) => setOtpCode(e.target.value)}
+              autoFocus required maxLength={32}
+            />
+            <p className="text-[11px] text-amber-700 leading-relaxed">
+              인증 앱(Google Authenticator / Authy 등)의 6자리 코드를 입력해주세요.<br />
+              인증 앱을 사용할 수 없는 경우 발급받은 백업코드(XXXX-XXXX)를 입력하면 됩니다. (백업코드는 1회용)
+            </p>
+            <button type="button" onClick={resetOtp} className="text-xs text-amber-700 underline">
+              ← 다른 계정으로 로그인
+            </button>
+          </div>
+        )}
+
         {error && <p className="text-sm text-red-500">{error}</p>}
         <button type="submit" disabled={loading} className="btn-primary w-full h-12 text-base">
-          {loading ? "로그인 중..." : "이메일 로그인"}
+          {loading ? "로그인 중..." : (otpStep ? "OTP 확인 후 로그인" : "이메일 로그인")}
         </button>
       </form>
 
