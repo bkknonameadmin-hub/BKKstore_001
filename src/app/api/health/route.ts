@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getRedis } from "@/lib/redis";
+import { queueStats } from "@/lib/queue";
 
 /**
  * Health check
@@ -34,6 +36,28 @@ export async function GET(req: Request) {
     checks.database = { ok: false, error: e.message };
   }
 
+  // Redis 연결 체크 (선택적 — 미설정 OK)
+  const redis = getRedis();
+  if (redis) {
+    const redisStart = Date.now();
+    try {
+      const pong = await redis.ping();
+      checks.redis = { ok: pong === "PONG", latencyMs: Date.now() - redisStart };
+    } catch (e: any) {
+      checks.redis = { ok: false, error: e.message };
+    }
+  } else {
+    checks.redis = { ok: true, error: "not configured (using in-memory fallback)" };
+  }
+
+  // 큐 상태
+  let queue: any;
+  try {
+    queue = await queueStats();
+  } catch (e: any) {
+    queue = { error: e.message };
+  }
+
   // 환경변수 체크 (필수 키만)
   checks.env = {
     ok: !!process.env.DATABASE_URL && !!process.env.NEXTAUTH_SECRET,
@@ -42,7 +66,9 @@ export async function GET(req: Request) {
       !process.env.NEXTAUTH_SECRET ? "NEXTAUTH_SECRET 미설정" : undefined,
   };
 
-  const allOk = Object.values(checks).every((c) => c.ok);
+  // Redis 미설정은 ok 로 간주 (선택 의존성)
+  const criticalChecks = { database: checks.database, env: checks.env };
+  const allOk = Object.values(criticalChecks).every((c) => c.ok);
 
   return NextResponse.json(
     {
@@ -51,6 +77,7 @@ export async function GET(req: Request) {
       time: new Date().toISOString(),
       uptime: process.uptime(),
       checks,
+      queue,
     },
     { status: allOk ? 200 : 503 }
   );

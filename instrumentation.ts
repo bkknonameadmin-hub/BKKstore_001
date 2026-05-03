@@ -1,12 +1,21 @@
 /**
  * Next.js 14 instrumentation hook
- * - 서버 부팅 시 한 번 호출되어 Sentry 를 초기화
- * - Edge / Node 런타임에 따라 적절한 config 선택
- * - next.config 에 `experimental.instrumentationHook: true` 또는 Next 14.2+ 자동 인식
+ * - 서버 부팅 시 한 번 호출되어 Sentry 초기화
+ * - 개발 환경에서는 BullMQ 워커도 같은 프로세스에서 자동 시작
+ *   (운영 환경은 scripts/worker.ts 별도 프로세스 권장)
  */
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
     await import("./sentry.server.config");
+
+    // 개발 환경 + DISABLE_INPROCESS_WORKER 미설정 시 워커 자동 시작
+    if (
+      process.env.NODE_ENV !== "production" &&
+      process.env.DISABLE_INPROCESS_WORKER !== "true"
+    ) {
+      const { startWorkers } = await import("./src/lib/workers");
+      startWorkers();
+    }
   }
   if (process.env.NEXT_RUNTIME === "edge") {
     await import("./sentry.edge.config");

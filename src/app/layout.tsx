@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import AuthProvider from "@/components/AuthProvider";
 import GAScript from "@/components/GAScript";
+import Toaster from "@/components/Toaster";
 
 const SITE = process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXTAUTH_URL || "http://localhost:3000";
 const SITE_NAME = process.env.NEXT_PUBLIC_BUSINESS_NAME || "낚시몰";
@@ -73,6 +74,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="ko">
       <body className="bg-white">
         <AuthProvider>{children}</AuthProvider>
+        <Toaster />
         <GAScript />
       </body>
     </html>

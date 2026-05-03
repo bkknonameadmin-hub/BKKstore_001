@@ -15,6 +15,7 @@ const NAV = [
   { href: "/admin/notifications", label: "알림 관리", icon: "💬" },
   { href: "/admin/reports", label: "매출 리포트", icon: "📈" },
   { href: "/admin/feeds", label: "상품 피드", icon: "📡" },
+  { href: "/admin/queue", label: "백그라운드 큐", icon: "⚙️" },
   { href: "/admin/users", label: "회원 관리", icon: "👤" },
 ];
 

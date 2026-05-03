@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { cacheGet, cacheSet, cacheDel } from "@/lib/cache";
 
 /**
  * 네이버 쇼핑 EP (Enrichment Product) 피드 생성기
@@ -209,20 +210,26 @@ export async function generateNaverFeed(opts: GenerateOptions = {}): Promise<{ t
 }
 
 /**
- * 5분 간격 캐시 (인메모리) — 운영 시 Redis 권장
+ * Redis 기반 5분 캐시 (Redis 미설정시 인메모리 폴백)
  */
-let _cache: { tsv: string; stats: FeedStats; expiresAt: number } | null = null;
-const CACHE_TTL_MS = 5 * 60 * 1000;
+const CACHE_KEY = "feed:naver:v1";
+const CACHE_TTL_SEC = 5 * 60;
 
 export async function getCachedNaverFeed(force = false) {
-  if (!force && _cache && _cache.expiresAt > Date.now()) {
-    return _cache;
+  if (!force) {
+    const cached = await cacheGet<{ tsv: string; stats: FeedStats }>(CACHE_KEY);
+    if (cached) {
+      // stats.generatedAt 직렬화 후 복원
+      cached.stats.generatedAt = new Date(cached.stats.generatedAt as any);
+      return cached;
+    }
   }
   const { tsv, stats } = await generateNaverFeed();
-  _cache = { tsv, stats, expiresAt: Date.now() + CACHE_TTL_MS };
-  return _cache;
+  const payload = { tsv, stats };
+  await cacheSet(CACHE_KEY, payload, CACHE_TTL_SEC);
+  return payload;
 }
 
-export function invalidateNaverFeedCache() {
-  _cache = null;
+export async function invalidateNaverFeedCache() {
+  await cacheDel(CACHE_KEY);
 }

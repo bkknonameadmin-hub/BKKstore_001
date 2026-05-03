@@ -136,9 +136,18 @@ export async function isLoginBlocked(email: string, ip: string | null): Promise<
   return { blocked: false };
 }
 
-/** 일반 API 레이트 리밋용 인메모리 카운터 (단일 프로세스 한정 - 운영시 Redis 권장) */
+/**
+ * 일반 API 레이트 리밋
+ * - Redis 사용시: 분산 환경에서도 정확한 카운트 (INCR + EXPIRE 원자 처리)
+ * - Redis 미설정시: 인메모리 폴백 (단일 인스턴스 한정)
+ *
+ * 동기 + 비동기 모두 지원하기 위해 동기 버전(in-memory) 과 async 버전 분리
+ */
+import { getRedis } from "@/lib/redis";
+
 const buckets = new Map<string, { count: number; resetAt: number }>();
 
+/** 동기 버전 — 인메모리만 사용 (즉시 결과 필요한 곳에서) */
 export function rateLimit(key: string, max: number, windowMs: number): { ok: boolean; retryAfterSec?: number } {
   const now = Date.now();
   const b = buckets.get(key);
@@ -151,4 +160,37 @@ export function rateLimit(key: string, max: number, windowMs: number): { ok: boo
   }
   b.count += 1;
   return { ok: true };
+}
+
+/** 비동기 분산 버전 — Redis 있으면 분산, 없으면 인메모리 폴백 */
+export async function rateLimitAsync(key: string, max: number, windowMs: number): Promise<{ ok: boolean; retryAfterSec?: number; current?: number }> {
+  const r = getRedis();
+  if (!r) return rateLimit(key, max, windowMs);
+
+  const redisKey = `rl:${key}`;
+  try {
+    // INCR + EXPIRE 원자적 처리 (multi)
+    const pipeline = r.multi();
+    pipeline.incr(redisKey);
+    pipeline.pttl(redisKey);
+    const results = await pipeline.exec();
+    if (!results) return { ok: true };
+
+    const count = results[0][1] as number;
+    let ttl = results[1][1] as number;
+
+    // 첫 호출이면 TTL 설정
+    if (ttl === -1 || ttl === -2) {
+      await r.pexpire(redisKey, windowMs);
+      ttl = windowMs;
+    }
+
+    if (count > max) {
+      return { ok: false, retryAfterSec: Math.ceil(ttl / 1000), current: count };
+    }
+    return { ok: true, current: count };
+  } catch (e) {
+    // Redis 일시 장애 시 인메모리 폴백
+    return rateLimit(key, max, windowMs);
+  }
 }

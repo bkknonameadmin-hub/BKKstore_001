@@ -225,6 +225,26 @@ export async function sendAlimtalk(args: SendArgs): Promise<AlimtalkResult> {
   }
 }
 
+/* ========== 큐 enqueue (재시도 보장) ========== */
+
+import { enqueue, JOBS } from "@/lib/queue";
+import { isRedisAvailable } from "@/lib/redis";
+
+/**
+ * 알림톡을 백그라운드 큐에 추가
+ * - Redis 있으면 BullMQ 로 enqueue (실패시 5회 지수 백오프 자동 재시도)
+ * - Redis 없으면 즉시 직접 발송
+ */
+export async function enqueueAlimtalk(args: SendArgs, options?: { jobId?: string }): Promise<{ queued: boolean; result?: AlimtalkResult }> {
+  if (isRedisAvailable()) {
+    await enqueue(JOBS.ALIMTALK_SEND, args, { jobId: options?.jobId });
+    return { queued: true };
+  }
+  // 폴백: 직접 발송
+  const result = await sendAlimtalk(args);
+  return { queued: false, result };
+}
+
 /* ========== 편의 함수 (도메인 시나리오) ========== */
 
 type OrderForNotify = {
@@ -242,7 +262,7 @@ function siteUrl(): string {
 }
 
 export async function notifyOrderPaid(order: OrderForNotify) {
-  return sendAlimtalk({
+  return enqueueAlimtalk({
     to: order.phone,
     template: "ORDER_PAID",
     variables: {
@@ -251,11 +271,11 @@ export async function notifyOrderPaid(order: OrderForNotify) {
       amount: formatKRW(order.totalAmount).replace("원", ""),
       method: order.provider || "카드",
     },
-  });
+  }, { jobId: `order-paid:${order.orderNo}` });
 }
 
 export async function notifyShippingStarted(order: OrderForNotify) {
-  return sendAlimtalk({
+  return enqueueAlimtalk({
     to: order.phone,
     template: "SHIPPING_STARTED",
     variables: {
@@ -271,16 +291,16 @@ export async function notifyShippingStarted(order: OrderForNotify) {
 }
 
 export async function notifyDeliveryCompleted(order: OrderForNotify) {
-  return sendAlimtalk({
+  return enqueueAlimtalk({
     to: order.phone,
     template: "DELIVERY_COMPLETED",
     variables: { name: order.recipient, orderNo: order.orderNo },
     buttonUrls: { reviewUrl: `${siteUrl()}/mypage/reviews` },
-  });
+  }, { jobId: `delivered:${order.orderNo}` });
 }
 
 export async function notifyOrderCancelled(order: OrderForNotify) {
-  return sendAlimtalk({
+  return enqueueAlimtalk({
     to: order.phone,
     template: "ORDER_CANCELLED",
     variables: {
@@ -288,11 +308,11 @@ export async function notifyOrderCancelled(order: OrderForNotify) {
       orderNo: order.orderNo,
       amount: formatKRW(order.totalAmount).replace("원", ""),
     },
-  });
+  }, { jobId: `cancelled:${order.orderNo}` });
 }
 
 export async function notifyOrderRefunded(order: OrderForNotify) {
-  return sendAlimtalk({
+  return enqueueAlimtalk({
     to: order.phone,
     template: "ORDER_REFUNDED",
     variables: {
@@ -300,7 +320,7 @@ export async function notifyOrderRefunded(order: OrderForNotify) {
       orderNo: order.orderNo,
       amount: formatKRW(order.totalAmount).replace("원", ""),
     },
-  });
+  }, { jobId: `refunded:${order.orderNo}` });
 }
 
 /**
@@ -316,7 +336,7 @@ export async function notifyAdminNewOrder(args: {
   productSummary: string;
   method: string;
 }) {
-  return sendAlimtalk({
+  const r = await enqueueAlimtalk({
     to: args.to,
     template: "ADMIN_NEW_ORDER",
     variables: {
@@ -329,5 +349,8 @@ export async function notifyAdminNewOrder(args: {
     buttonUrls: {
       adminOrderUrl: `${siteUrl()}/admin/orders/${args.orderId}`,
     },
-  });
+  }, { jobId: `admin-new-order:${args.orderNo}:${args.to}` });
+  // 호환: notifyAdminOrderReceived 가 ok/provider/error 형태 기대
+  if (r.queued) return { ok: true as const, provider: "queued", messageId: undefined, error: undefined };
+  return r.result!;
 }

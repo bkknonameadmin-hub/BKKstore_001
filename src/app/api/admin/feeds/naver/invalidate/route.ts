@@ -10,7 +10,7 @@ export async function POST() {
   const guard = await assertAdminApi();
   if (!guard.ok) return NextResponse.json({ error: guard.error }, { status: guard.status });
 
-  invalidateNaverFeedCache();
+  await invalidateNaverFeedCache();
   const { stats } = await getCachedNaverFeed(true);
   return NextResponse.json({ ok: true, stats });
 }
