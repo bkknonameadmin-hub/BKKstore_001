@@ -35,7 +35,7 @@ export default function LoginPage() {
       } else if (res.error.includes("로그인 시도") || res.error.includes("탈퇴") || res.error.includes("정지")) {
         setError(res.error);
       } else {
-        setError("아이디 또는 비밀번호가 올바르지 않습니다.");
+        setError("아이디(또는 이메일) 또는 비밀번호가 올바르지 않습니다.");
       }
     } else {
       router.push(callbackUrl);
@@ -58,11 +58,11 @@ export default function LoginPage() {
 
       <form onSubmit={submit} className="space-y-3">
         <div>
-          <label className="label">아이디</label>
+          <label className="label">아이디 또는 이메일</label>
           <input
-            type="text" required minLength={4} maxLength={20}
+            type="text" required minLength={4} maxLength={320}
             className="input h-11" autoComplete="username"
-            placeholder="가입시 등록한 아이디"
+            placeholder="아이디 또는 이메일 주소"
             value={username}
             onChange={(e) => setUsername(e.target.value.toLowerCase())}
             disabled={otpStep}
@@ -102,7 +102,7 @@ export default function LoginPage() {
 
         {error && <p className="text-sm text-red-500">{error}</p>}
         <button type="submit" disabled={loading} className="btn-primary w-full h-12 text-base">
-          {loading ? "로그인 중..." : (otpStep ? "OTP 확인 후 로그인" : "이메일 로그인")}
+          {loading ? "로그인 중..." : (otpStep ? "OTP 확인 후 로그인" : "로그인")}
         </button>
       </form>
 

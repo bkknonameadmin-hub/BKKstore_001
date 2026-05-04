@@ -14,44 +14,49 @@ const providers: NextAuthOptions["providers"] = [
   CredentialsProvider({
     name: "Credentials",
     credentials: {
-      username: { label: "아이디", type: "text" },
+      username: { label: "아이디 또는 이메일", type: "text" },
       password: { label: "비밀번호", type: "password" },
       otpCode: { label: "OTP 코드 (6자리) 또는 백업코드", type: "text" },
     },
     async authorize(credentials, req) {
-      const username = (credentials?.username || "").toLowerCase().trim();
+      const identifier = (credentials?.username || "").toLowerCase().trim();
       const password = credentials?.password;
       const otpCode = (credentials?.otpCode || "").trim();
-      if (!username || !password) return null;
+      if (!identifier || !password) return null;
 
       // NextAuth authorize 콜백의 req.headers 는 plain object
       const { ip, userAgent } = getClientInfo(req?.headers as any);
 
-      const blocked = await isLoginBlocked(username, ip);
+      const blocked = await isLoginBlocked(identifier, ip);
       if (blocked.blocked) {
-        await logLoginAttempt({ identifier: username, userId: null, success: false, reason: "rate_limited", ip, userAgent });
+        await logLoginAttempt({ identifier, userId: null, success: false, reason: "rate_limited", ip, userAgent });
         throw new Error("로그인 시도가 너무 많습니다. 잠시 후 다시 시도해주세요.");
       }
 
-      const user = await prisma.user.findUnique({ where: { username } });
+      // @ 가 있으면 이메일로, 없으면 username 으로 조회
+      const isEmail = identifier.includes("@");
+      const user = isEmail
+        ? await prisma.user.findUnique({ where: { email: identifier } })
+        : await prisma.user.findUnique({ where: { username: identifier } });
+
       if (!user || !user.passwordHash) {
-        await logLoginAttempt({ identifier: username, userId: user?.id || null, success: false, reason: user ? "no_password" : "no_user", ip, userAgent });
+        await logLoginAttempt({ identifier, userId: user?.id || null, success: false, reason: user ? "no_password" : "no_user", ip, userAgent });
         return null;
       }
 
       // 탈퇴/정지 계정 차단
       if (user.status === "WITHDRAWN") {
-        await logLoginAttempt({ identifier: username, userId: user.id, success: false, reason: "withdrawn", ip, userAgent });
+        await logLoginAttempt({ identifier, userId: user.id, success: false, reason: "withdrawn", ip, userAgent });
         throw new Error("탈퇴 처리된 계정입니다.");
       }
       if (user.status === "SUSPENDED") {
-        await logLoginAttempt({ identifier: username, userId: user.id, success: false, reason: "suspended", ip, userAgent });
+        await logLoginAttempt({ identifier, userId: user.id, success: false, reason: "suspended", ip, userAgent });
         throw new Error("이용 정지된 계정입니다. 고객센터로 문의해주세요.");
       }
 
       const ok = await bcrypt.compare(password, user.passwordHash);
       if (!ok) {
-        await logLoginAttempt({ identifier: username, userId: user.id, success: false, reason: "wrong_password", ip, userAgent });
+        await logLoginAttempt({ identifier, userId: user.id, success: false, reason: "wrong_password", ip, userAgent });
         return null;
       }
 
@@ -77,7 +82,7 @@ const providers: NextAuthOptions["providers"] = [
               const fresh = await markTotpCodeUsed(user.id, digitsOnly);
               if (!fresh) {
                 otpOk = false;
-                await logLoginAttempt({ identifier: username, userId: user.id, success: false, reason: "totp_replay", ip, userAgent });
+                await logLoginAttempt({ identifier, userId: user.id, success: false, reason: "totp_replay", ip, userAgent });
                 throw new Error("OTP_INVALID");
               }
             }
@@ -100,7 +105,7 @@ const providers: NextAuthOptions["providers"] = [
         }
 
         if (!otpOk) {
-          await logLoginAttempt({ identifier: username, userId: user.id, success: false, reason: "wrong_otp", ip, userAgent });
+          await logLoginAttempt({ identifier, userId: user.id, success: false, reason: "wrong_otp", ip, userAgent });
           throw new Error("OTP_INVALID");
         }
 
@@ -121,7 +126,7 @@ const providers: NextAuthOptions["providers"] = [
         },
       });
 
-      await logLoginAttempt({ identifier: username, userId: user.id, success: true, ip, userAgent });
+      await logLoginAttempt({ identifier, userId: user.id, success: true, ip, userAgent });
       return { id: user.id, email: user.email, name: user.name };
     },
   }),

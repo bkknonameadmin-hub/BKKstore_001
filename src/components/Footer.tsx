@@ -111,6 +111,14 @@ export default async function Footer() {
             결제대행사인 토스페이먼츠, KG이니시스, 네이버페이는 결제 처리 외 어떠한 책임도 지지 않습니다.<br />
             © {new Date().getFullYear()} {BIZ.name}. All rights reserved.
           </p>
+          <div className="mt-3 flex justify-end">
+            <Link
+              href="/admin"
+              className="text-[10px] text-gray-400 hover:text-purple-600 transition-colors"
+            >
+              관리자 로그인
+            </Link>
+          </div>
         </div>
       </div>
     </footer>
