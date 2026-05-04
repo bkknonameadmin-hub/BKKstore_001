@@ -423,16 +423,157 @@ curl http://localhost:3000/api/admin/sentry-test?type=logger
 
 DSN 미설정 시 Sentry 코드는 no-op으로 동작 (빌드/런타임 영향 없음).
 
+## Phase 3+4 (v8 추가)
+
+### 상품 Q&A
+- 상품 상세에서 비공개/공개 문의 작성 (`ProductQnaSection`)
+- 비공개 글은 작성자/관리자만 본문 노출 (다른 회원에게는 마스킹)
+- `/api/products/[id]/questions` GET/POST, `/api/admin/questions/[id]` PATCH/DELETE (답변·숨김)
+
+### 1:1 문의 티켓
+- `/support` 회원 + 비회원(이메일 기반) 모두 작성 가능
+- 카카오톡 형태의 채팅 UI (`SupportMessage` 의 `CUSTOMER` / `ADMIN` 분리)
+- 7개 카테고리, 4단계 상태 (OPEN / PENDING / ANSWERED / CLOSED)
+- 관리자 `/admin/support` 에서 상태 필터링 + 답변
+
+### 송장 일괄 처리
+- `/admin/orders/bulk-shipping` — XLSX/CSV 업로드 → 일괄 SHIPPED 처리
+- 주문번호 + 택배사 + 송장번호 한 번에 수십~수백건
+- 처리 후 자동 알림톡 발송 (개별 비동기 큐)
+- 템플릿 엑셀 다운로드 제공
+
+### 이미지 자동 처리 (sharp)
+- `lib/image.ts` — 다중 사이즈 자동 생성 (thumb / medium / large) + WebP 변환
+- HEIC / HEIF (아이폰 사진) → WebP 자동 변환
+- EXIF 회전 적용 후 EXIF 메타데이터 제거 (위치정보 등 PII 보호)
+- GIF 는 첫 프레임 손상 방지 위해 원본 보존
+- `/api/admin/upload` 가 자동으로 thumbnailUrl / mediumUrl / largeUrl 반환
+
+### 2단계 인증 (TOTP)
+- Google Authenticator / Authy / 1Password 호환 (otplib + qrcode)
+- `/mypage/security` 3단계 위자드 — QR 스캔 → 코드 검증 → 백업코드 8자리×10
+- TOTP secret 은 AES-256-GCM 암호화하여 DB 저장
+- 백업코드는 bcrypt 해시 (1회용)
+- **로그인 챌린지** — `totpEnabled` 회원은 비번 통과 후 OTP 6자리 또는 백업코드 필수
+- **재사용 방어** — 동일 (userId, code) 90초 내 재사용 거부 (Redis NX + 인메모리 폴백)
+- 2FA 해제는 비밀번호 재인증 필수
+
+### 이메일 인증 (가입시)
+- 가입시 24시간 유효 토큰 발송 (NextAuth `VerificationToken` 모델 활용)
+- `/verify-email?token=...` 클릭 → `User.emailVerified` 업데이트
+- 마이페이지에서 인증 메일 재발송 (10분 3회 제한)
+
+### PWA
+- `src/app/manifest.ts` — 모바일 "홈 화면에 추가" + 데스크탑 설치 가능
+- 단축 아이콘: 장바구니 / 마이페이지
+- 아이콘 192/512 + maskable
+
+## 운영 모듈 (v9 추가 — 최신)
+
+### 비밀번호 찾기 / 재설정
+- `/forgot-password` — 이메일 입력시 토큰 메일 발송 (가입자/미가입자 구분 노출 안 함, 사용자 열거 방어)
+- `/reset-password?token=...` — 토큰 검증 후 새 비밀번호 설정
+- 토큰 1시간 유효 + 1회용 + IP 레이트리밋 (`api/auth/forgot-password`, `api/auth/reset-password`)
+- 재설정 완료시 모든 기존 세션 무효화 권장 (로그아웃 안내)
+
+### 공지 / FAQ CMS
+- `/admin/notices`, `/admin/faq` — 관리자 작성/수정/순서 관리
+- 사용자 노출: `/notice`, `/notice/[id]`, `/faq` (`FaqAccordion`)
+- `NoticeBar` — 상단 공지 띠 (활성 공지 자동 노출)
+- `lib/cms.ts` — 공지/FAQ 조회 헬퍼
+
+### 사이트 설정
+- `/admin/site` (`SiteSettingsForm`) — 로고, 히어로 슬라이드, 배너, 상호 등 런타임 편집
+- DB에 키-값 저장 (`SiteSetting` 모델), `lib/site-settings.ts` 캐시
+- 빌드 재배포 없이 메인 페이지 슬라이드/배너 교체
+
+### 검색 자동완성
+- `HeaderSearch` — 입력시 디바운스로 `/api/search/suggest` 호출
+- 상품명/카테고리명 부분일치 → 키보드 ↑↓/Enter 네비게이션
+
+### 위시리스트 (zustand)
+- `src/store/wishlist.ts` — localStorage 영속화
+- 4개 컴포넌트:
+  - `WishlistButton` — 일반 토글
+  - `WishlistHeartButton` — 카드 우상단 하트
+  - `WishlistBadge` — 헤더 카운트
+  - `WishlistInitializer` — 마운트시 서버 sync
+- 비회원도 사용 가능 (로컬 저장), 로그인시 서버 동기화
+
+### 재입고 알림
+- `StockNotifyButton` — 품절 상품에서 "재입고시 알림" 등록
+- `/api/stock-notifications` — `StockNotification` 모델
+- 재고 복구시 등록자에게 자동 메일/알림톡 (기존 알림 모듈 재사용)
+
+### 비회원 주문 조회
+- `/guest-orders` — 주문번호 + 휴대폰 뒷자리 4개로 조회
+- `/api/orders/guest-lookup` — 결제수단/배송정보/현재 상태/송장번호 노출
+
+### 주문 취소 / 반품 플로우 (사용자 셀프)
+- `/mypage/orders` 의 `OrderActionButtons`
+  - PAID 상태: 즉시 취소 가능
+  - DELIVERED 후 7일 이내: 반품 신청 (`ReturnForm`)
+- `/api/orders/[id]/cancel` — 결제 망취소 + 재고 복구 + 쿠폰/적립금 복구
+- `lib/payments/refund.ts` — 토스/이니시스/네이버 환불 통합 모듈
+- `lib/payments/order-access.ts` — 주문 소유자 검증 가드
+
+### 감사로그 (Audit)
+- `lib/audit.ts` — `AuditLog` 모델에 관리자 행동 기록 (행위자/대상/액션/메타)
+- `/admin/audit` — 검색/필터로 누가 무엇을 언제 했는지 조회
+- 회원 권한 변경, 환불, 상품 삭제, 강제 로그아웃 등 민감 액션 자동 기록
+
+### 회원 등급 / 권한 관리 (RBAC)
+- `/admin/users/[id]` 의 `UserRoleEditor` — 역할 변경 UI
+- `/api/admin/users/[id]/role` — 역할 변경 API (감사로그 자동 기록)
+- `lib/membership.ts` — 회원 등급(누적 구매액 기반) 자동 계산
+
+### TOTP 코드 재사용 방어
+- `markTotpCodeUsed(userId, code)` — Redis NX (`SET ... EX 90 NX`)
+- Redis 미설정시 인메모리 Map 폴백 (단일 인스턴스 한정)
+- 동일 코드 90초 내 두 번째 사용은 거부 → 화면캡처/네트워크 가로채기 방어
+
+### Cron 정리 작업
+- `/api/cron/cleanup` — `IdempotencyKey` / `LoginLog` / `DataExportRequest` 만료분 일괄 삭제
+- `lib/cron-auth.ts` — `x-cron-token` 검증
+- 권장 주기: 매일 04:30
+
+### 추가 환경변수
+
+```bash
+# 비밀번호 재설정 (별도 키 없음 — SMTP_* 재사용)
+
+# 사이트 기본 URL (메일 링크용, NEXTAUTH_URL 폴백)
+NEXT_PUBLIC_SITE_URL=https://your-domain.com
+
+# Redis (TOTP 재사용 방어 + 분산 레이트리밋 + 큐)
+REDIS_URL=redis://localhost:6379
+
+# 비즈니스 표시명 (TOTP issuer, 메일 발신, manifest 등 공통)
+NEXT_PUBLIC_BUSINESS_NAME=낚시몰
+```
+
 ## 다음 단계로 추가하면 좋은 기능
 
-- [ ] 2단계 인증 (TOTP / OTP App)
-- [ ] 이메일 인증 (가입시)
+이미 구현 완료 (체크):
+
+- [x] 2단계 인증 (TOTP / OTP App) — v8
+- [x] 이메일 인증 (가입시) — v8
+- [x] Redis 도입 (세션 캐시, 분산 레이트리밋) — v6/v9
+- [x] BullMQ 백그라운드 큐 (alimtalk 재시도) — v6
+- [x] 비밀번호 재설정 (이메일 토큰 기반) — v9
+
+남은 후보:
+
 - [ ] 사이즈 옵션 (색상 + 사이즈 조합 SKU)
-- [ ] 알림 수신 동의 관리 (회원별 ON/OFF)
-- [ ] Redis 도입 (세션 캐시, 분산 레이트리밋)
-- [ ] BullMQ 백그라운드 큐 (alimtalk 재시도)
-- [ ] Postgres tsvector + 형태소 분석 검색
-- [ ] 비밀번호 재설정 (휴대폰 인증 기반)
+- [ ] 알림 수신 동의 관리 (회원별 채널 ON/OFF)
+- [ ] Postgres tsvector + 형태소 분석 검색 (현재는 LIKE 자동완성)
+- [ ] 비밀번호 재설정 (휴대폰 인증 경로 추가 — 현재는 이메일만)
+- [ ] 회원 가입시 휴대폰 본인인증 (PASS / NICE)
+- [ ] 가격비교 EP 멀티채널 (다나와, 에누리)
+- [ ] 정산 자동화 (일/주/월 매출 → 회계 시스템 export)
+- [ ] Service Worker (오프라인 PWA — 현재는 manifest만)
+- [ ] 라이브커머스 / 실시간 재고 (WebSocket)
+- [ ] AI 상품 추천 (협업필터링 또는 임베딩)
 
 ## 라이선스
 
