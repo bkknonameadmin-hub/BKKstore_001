@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import crypto from "node:crypto";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { rateLimit, getClientInfo } from "@/lib/security";
+import { rateLimitAsync, getClientInfo } from "@/lib/security";
 import { getStorage } from "@/lib/storage";
 
 const ALLOWED = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"];
@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
   const userId = (session.user as any).id as string;
 
   const { ip } = getClientInfo(req);
-  const rl = rateLimit(`review-upload:${userId}:${ip || ""}`, 30, 5 * 60 * 1000);
+  const rl = await rateLimitAsync(`review-upload:${userId}:${ip || ""}`, 30, 5 * 60 * 1000);
   if (!rl.ok) return NextResponse.json({ error: "잠시 후 다시 시도해주세요." }, { status: 429 });
 
   try {

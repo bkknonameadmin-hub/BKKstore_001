@@ -1,0 +1,71 @@
+/**
+ * 관리자 계정 부트스트랩 시드
+ *
+ * 사용:
+ *   npm run db:seed:admin
+ *
+ * 환경변수:
+ *   ADMIN_EMAILS  — 쉼표 구분 (.env 에 이미 설정되어 있다면 사용)
+ *   ADMIN_PASSWORD — 비밀번호 (없으면 'changeme1234!' 기본값. 운영 전 반드시 변경)
+ *   ADMIN_NAME    — 표시 이름 (기본값 "관리자")
+ *
+ * 동작:
+ *   ADMIN_EMAILS 의 각 이메일에 대해 User 가 없으면 새로 만들고,
+ *   있으면 role 을 ADMIN 으로 승격한다 (passwordHash 는 덮어쓰지 않음).
+ */
+import { PrismaClient } from "@prisma/client";
+import bcrypt from "bcryptjs";
+
+const prisma = new PrismaClient();
+
+async function main() {
+  const emails = (process.env.ADMIN_EMAILS || "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+
+  if (emails.length === 0) {
+    console.error("[!] ADMIN_EMAILS 환경변수가 비어있습니다. .env 에 설정하세요.");
+    process.exit(1);
+  }
+
+  const password = process.env.ADMIN_PASSWORD || "changeme1234!";
+  const name = process.env.ADMIN_NAME || "관리자";
+  const passwordHash = await bcrypt.hash(password, 10);
+
+  for (const email of emails) {
+    const existing = await prisma.user.findUnique({ where: { email } });
+
+    if (existing) {
+      const updated = await prisma.user.update({
+        where: { email },
+        data: {
+          role: existing.role === "SUPER_ADMIN" ? "SUPER_ADMIN" : "ADMIN",
+          status: "ACTIVE",
+        },
+      });
+      console.log(`[=] 기존 회원 ${email} → role=${updated.role} 로 승격`);
+    } else {
+      const created = await prisma.user.create({
+        data: {
+          email,
+          name,
+          passwordHash,
+          role: "ADMIN",
+          status: "ACTIVE",
+          emailVerified: new Date(),
+        },
+      });
+      console.log(`[+] 새 관리자 생성: ${email} (id=${created.id})`);
+      console.log(`    초기 비밀번호: ${password}`);
+      console.log(`    !!! 운영 전 반드시 비밀번호를 변경하세요 !!!`);
+    }
+  }
+}
+
+main()
+  .catch((e) => {
+    console.error(e);
+    process.exit(1);
+  })
+  .finally(() => prisma.$disconnect());

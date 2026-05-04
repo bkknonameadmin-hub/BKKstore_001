@@ -1,19 +1,5 @@
 import Link from "next/link";
-
-// 사업자 정보 — .env 또는 운영 콘솔에서 관리 권장
-const BIZ = {
-  name:        process.env.NEXT_PUBLIC_BUSINESS_NAME       || "(주)낚시몰",
-  ceo:         process.env.NEXT_PUBLIC_BUSINESS_CEO        || "홍길동",
-  bizNo:       process.env.NEXT_PUBLIC_BUSINESS_NO         || "000-00-00000",
-  ecommNo:     process.env.NEXT_PUBLIC_ECOMM_REG_NO        || "제0000-서울XX-0000호",
-  address:     process.env.NEXT_PUBLIC_BUSINESS_ADDRESS    || "서울특별시 OO구 OO로 00, 0층",
-  csPhone:     process.env.NEXT_PUBLIC_CS_PHONE            || "00-000-0000",
-  csEmail:     process.env.NEXT_PUBLIC_CS_EMAIL            || "help@example.com",
-  csHours:     process.env.NEXT_PUBLIC_CS_HOURS            || "평일 09:00 ~ 18:00 (점심 12:00~13:00, 주말/공휴일 휴무)",
-  privacyOfficer: process.env.NEXT_PUBLIC_PRIVACY_OFFICER  || "홍길동",
-  privacyEmail:   process.env.NEXT_PUBLIC_PRIVACY_EMAIL    || "privacy@example.com",
-  hostingProvider: process.env.NEXT_PUBLIC_HOSTING_PROVIDER || "Vercel Inc.",
-};
+import { getSiteSettings } from "@/lib/site-settings";
 
 const POLICIES = [
   { href: "/terms", label: "이용약관" },
@@ -27,21 +13,54 @@ const SUPPORT = [
   { href: "/mypage", label: "마이페이지" },
   { href: "/mypage/wishlist", label: "위시리스트" },
   { href: "/mypage", label: "주문/배송조회" },
+  { href: "/guest-orders", label: "비회원 주문조회" },
   { href: "/support", label: "1:1 문의" },
-  { href: "/support", label: "자주 묻는 질문" },
+  { href: "/faq", label: "자주 묻는 질문" },
 ];
 
-export default function Footer() {
+const ENV_DEFAULTS = {
+  name:        process.env.NEXT_PUBLIC_BUSINESS_NAME       || "(주)낚시몰",
+  ceo:         process.env.NEXT_PUBLIC_BUSINESS_CEO        || "홍길동",
+  bizNo:       process.env.NEXT_PUBLIC_BUSINESS_NO         || "000-00-00000",
+  ecommNo:     process.env.NEXT_PUBLIC_ECOMM_REG_NO        || "제0000-서울XX-0000호",
+  address:     process.env.NEXT_PUBLIC_BUSINESS_ADDRESS    || "서울특별시 OO구 OO로 00, 0층",
+  csPhone:     process.env.NEXT_PUBLIC_CS_PHONE            || "00-000-0000",
+  csEmail:     process.env.NEXT_PUBLIC_CS_EMAIL            || "help@example.com",
+  csHours:     process.env.NEXT_PUBLIC_CS_HOURS            || "평일 09:00 ~ 18:00 (점심 12:00~13:00, 주말/공휴일 휴무)",
+  privacyOfficer: process.env.NEXT_PUBLIC_PRIVACY_OFFICER  || "홍길동",
+  privacyEmail:   process.env.NEXT_PUBLIC_PRIVACY_EMAIL    || "privacy@example.com",
+  hostingProvider: process.env.NEXT_PUBLIC_HOSTING_PROVIDER || "Vercel Inc.",
+  tagline: "낚시 입문자부터 베테랑까지, 필요한 모든 장비를 합리적인 가격으로 만나보세요.",
+};
+
+export default async function Footer() {
+  const settings = await getSiteSettings();
+  // settings.footer 가 비어있으면 env 기본값
+  const f = settings.footer || {};
+  const BIZ = {
+    name:    f.name    || ENV_DEFAULTS.name,
+    ceo:     f.ceo     || ENV_DEFAULTS.ceo,
+    bizNo:   f.bizNo   || ENV_DEFAULTS.bizNo,
+    ecommNo: f.ecommNo || ENV_DEFAULTS.ecommNo,
+    address: f.address || ENV_DEFAULTS.address,
+    csPhone: f.csPhone || ENV_DEFAULTS.csPhone,
+    csEmail: f.csEmail || ENV_DEFAULTS.csEmail,
+    csHours: f.csHours || ENV_DEFAULTS.csHours,
+    privacyOfficer: f.privacyOfficer || ENV_DEFAULTS.privacyOfficer,
+    privacyEmail:   f.privacyEmail   || ENV_DEFAULTS.privacyEmail,
+    hostingProvider: ENV_DEFAULTS.hostingProvider,
+    tagline: f.tagline || ENV_DEFAULTS.tagline,
+  };
+
   return (
     <footer className="mt-16 border-t border-gray-200 bg-gray-50 text-gray-600 text-xs">
-      {/* 상단: 정책 + 고객지원 + 사업자 정보 */}
       <div className="container-mall py-10 grid grid-cols-1 md:grid-cols-4 gap-8">
         <div className="md:col-span-2">
           <Link href="/" className="text-xl font-bold text-brand-700 inline-block mb-3">
             {BIZ.name}
           </Link>
-          <p className="text-xs text-gray-500 leading-relaxed">
-            낚시 입문자부터 베테랑까지, <br />필요한 모든 장비를 합리적인 가격으로 만나보세요.
+          <p className="text-xs text-gray-500 leading-relaxed whitespace-pre-line">
+            {BIZ.tagline}
           </p>
           <div className="mt-5">
             <div className="text-xs text-gray-500">고객센터</div>
@@ -78,7 +97,6 @@ export default function Footer() {
         </div>
       </div>
 
-      {/* 사업자 등록 정보 (전자상거래법 의무 표시) */}
       <div className="border-t border-gray-200 bg-white">
         <div className="container-mall py-5 text-[11px] text-gray-500 leading-relaxed">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-1">

@@ -2,11 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { assertAdminApi } from "@/lib/admin-guard";
+import { audit } from "@/lib/audit";
 
 const Schema = z.object({
   name: z.string().min(1).optional(),
   parentId: z.string().nullable().optional(),
   sortOrder: z.number().int().optional(),
+  description: z.string().max(500).nullable().optional(),
+  bannerImage: z.string().max(500).nullable().optional(),
+  iconEmoji: z.string().max(8).nullable().optional(),
 });
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
@@ -34,6 +38,11 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     }
 
     const updated = await prisma.category.update({ where: { id: params.id }, data });
+    await audit({
+      actorId: guard.session?.user?.id, actorEmail: guard.session?.user?.email,
+      action: "category.update", targetType: "Category", targetId: params.id,
+      metadata: { fields: Object.keys(data) },
+    });
     return NextResponse.json(updated);
   } catch (e: any) {
     if (e?.code === "P2025") return NextResponse.json({ error: "카테고리를 찾을 수 없습니다." }, { status: 404 });
@@ -60,6 +69,10 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
 
   try {
     await prisma.category.delete({ where: { id: params.id } });
+    await audit({
+      actorId: guard.session?.user?.id, actorEmail: guard.session?.user?.email,
+      action: "category.delete", targetType: "Category", targetId: params.id,
+    });
     return NextResponse.json({ ok: true });
   } catch (e: any) {
     if (e?.code === "P2025") return NextResponse.json({ error: "카테고리를 찾을 수 없습니다." }, { status: 404 });

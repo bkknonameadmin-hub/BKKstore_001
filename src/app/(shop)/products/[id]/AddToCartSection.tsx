@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useCart } from "@/store/cart";
 import { toast } from "@/store/toast";
 import { formatKRW } from "@/lib/utils";
+import StockNotifyButton from "@/components/StockNotifyButton";
 
 type Variant = {
   id: string;
@@ -212,6 +213,14 @@ export default function AddToCartSection({ product, variants }: Props) {
           {(!hasVariants && product.stock === 0) ? "품절" : "바로 구매하기"}
         </button>
       </div>
+
+      {/* 품절 시 재입고 알림 */}
+      {!hasVariants && product.stock === 0 && (
+        <StockNotifyButton productId={product.id} variantId={null} className="w-full" />
+      )}
+      {hasVariants && variants.every((v) => v.stock === 0) && (
+        <StockNotifyButton productId={product.id} variantId={null} className="w-full" />
+      )}
     </div>
   );
 }

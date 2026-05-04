@@ -16,6 +16,9 @@ export default async function AdminCategoriesPage() {
     name: c.name,
     parentId: c.parentId,
     sortOrder: c.sortOrder,
+    description: c.description,
+    bannerImage: c.bannerImage,
+    iconEmoji: c.iconEmoji,
     productCount: c._count.products,
   }));
 

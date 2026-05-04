@@ -94,6 +94,7 @@ export default function CheckoutPage() {
   const total = Math.max(0, subtotal - couponDiscount - usedPoint + shipping);
 
   const submit = async () => {
+    if (loading) return; // 더블클릭 방어
     if (!recipient || !phone || !zipCode || !address1) {
       toast.warning("배송 정보를 모두 입력해주세요.");
       return;
@@ -104,10 +105,19 @@ export default function CheckoutPage() {
     }
 
     setLoading(true);
+    // 멱등키: 동일 주문 시도 중복 방지 (서버에서 lib/idempotency 로 검증)
+    const idempotencyKey =
+      (typeof crypto !== "undefined" && "randomUUID" in crypto)
+        ? crypto.randomUUID()
+        : `idem-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    let willRedirect = false;
     try {
       const res = await fetch("/api/orders", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": idempotencyKey,
+        },
         body: JSON.stringify({
           items: items.map((i) => ({
             productId: i.productId,
@@ -124,6 +134,7 @@ export default function CheckoutPage() {
 
       if (provider === "TOSS") {
         const { loadTossPayments } = await import("@/lib/payments/toss-client");
+        willRedirect = true;
         await loadTossPayments({
           orderId: data.orderNo,
           orderName: items[0].name + (items.length > 1 ? ` 외 ${items.length - 1}건` : ""),
@@ -132,21 +143,31 @@ export default function CheckoutPage() {
         });
       } else if (provider === "INICIS") {
         const form = await (await fetch("/api/payments/inicis/prepare", {
-          method: "POST", headers: { "Content-Type": "application/json" },
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey },
           body: JSON.stringify({ orderNo: data.orderNo, amount: total, name: recipient, phone, items }),
         })).json();
         const { startInicisPay } = await import("@/lib/payments/inicis-client");
+        willRedirect = true;
         await startInicisPay(form);
       } else if (provider === "NAVERPAY") {
         const naver = await (await fetch("/api/payments/naver/reserve", {
-          method: "POST", headers: { "Content-Type": "application/json" },
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey },
           body: JSON.stringify({ orderNo: data.orderNo, amount: total, items }),
         })).json();
-        if (naver.redirectUrl) window.location.href = naver.redirectUrl;
+        if (naver.redirectUrl) {
+          willRedirect = true;
+          window.location.href = naver.redirectUrl;
+        } else {
+          throw new Error(naver.error || "네이버페이 예약 실패");
+        }
       }
     } catch (e: any) {
       toast.error(e.message || "주문 처리 중 오류가 발생했습니다.");
-      setLoading(false);
+    } finally {
+      // 외부 결제창/리다이렉트가 시작되지 않은 경우만 버튼 복구
+      if (!willRedirect) setLoading(false);
     }
   };
 

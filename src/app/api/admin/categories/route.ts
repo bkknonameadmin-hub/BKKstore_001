@@ -8,6 +8,9 @@ const Schema = z.object({
   name: z.string().min(1),
   parentId: z.string().nullable().optional(),
   sortOrder: z.number().int().optional(),
+  description: z.string().max(500).nullable().optional(),
+  bannerImage: z.string().max(500).nullable().optional(),
+  iconEmoji: z.string().max(8).nullable().optional(),
 });
 
 export async function GET() {
@@ -35,6 +38,9 @@ export async function POST(req: NextRequest) {
         name: data.name,
         parentId: data.parentId || null,
         sortOrder: data.sortOrder ?? 0,
+        description: data.description ?? null,
+        bannerImage: data.bannerImage ?? null,
+        iconEmoji: data.iconEmoji ?? null,
       },
     });
     return NextResponse.json(created);

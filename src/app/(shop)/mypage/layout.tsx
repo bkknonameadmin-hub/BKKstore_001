@@ -6,7 +6,8 @@ import { prisma } from "@/lib/prisma";
 import { formatKRW } from "@/lib/utils";
 
 const NAV = [
-  { href: "/mypage", label: "주문 내역", icon: "🧾" },
+  { href: "/mypage", label: "마이 대시보드", icon: "🏠" },
+  { href: "/mypage/orders", label: "주문 내역", icon: "🧾" },
   { href: "/mypage/wishlist", label: "위시리스트", icon: "❤" },
   { href: "/mypage/coupons", label: "쿠폰함", icon: "🎟" },
   { href: "/mypage/points", label: "적립금 내역", icon: "🪙" },
@@ -62,7 +63,7 @@ export default async function MyPageLayout({ children }: { children: React.React
               >
                 <span className="w-5">{n.icon}</span>
                 <span>{n.label}</span>
-                {n.href === "/mypage" && user._count.orders > 0 && (
+                {n.href === "/mypage/orders" && user._count.orders > 0 && (
                   <span className="ml-auto text-[11px] text-gray-400">{user._count.orders}</span>
                 )}
                 {n.href === "/mypage/wishlist" && user._count.wishlist > 0 && (

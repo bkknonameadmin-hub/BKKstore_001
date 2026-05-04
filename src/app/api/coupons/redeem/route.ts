@@ -3,7 +3,7 @@ import { z } from "zod";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { rateLimit, getClientInfo } from "@/lib/security";
+import { rateLimitAsync, getClientInfo } from "@/lib/security";
 
 const Schema = z.object({ code: z.string().min(1).max(64) });
 
@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
   const userId = (session.user as any).id as string;
 
   const { ip } = getClientInfo(req);
-  const rl = rateLimit(`redeem:${userId}:${ip || ""}`, 10, 60 * 1000);
+  const rl = await rateLimitAsync(`redeem:${userId}:${ip || ""}`, 10, 60 * 1000);
   if (!rl.ok) return NextResponse.json({ error: "잠시 후 다시 시도해주세요." }, { status: 429 });
 
   try {

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { assertAdminApi } from "@/lib/admin-guard";
+import { audit } from "@/lib/audit";
 
 const Schema = z.object({
   name: z.string().min(1).max(80).optional(),
@@ -34,6 +35,11 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     }
 
     const updated = await prisma.coupon.update({ where: { id: params.id }, data: update });
+    await audit({
+      actorId: guard.session?.user?.id, actorEmail: guard.session?.user?.email,
+      action: "coupon.update", targetType: "Coupon", targetId: params.id,
+      metadata: { fields: Object.keys(data) },
+    });
     return NextResponse.json(updated);
   } catch (e: any) {
     if (e?.code === "P2025") return NextResponse.json({ error: "쿠폰을 찾을 수 없습니다." }, { status: 404 });
@@ -50,11 +56,20 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
   const issuedCount = await prisma.userCoupon.count({ where: { couponId: params.id } });
   if (issuedCount > 0) {
     await prisma.coupon.update({ where: { id: params.id }, data: { isActive: false } });
+    await audit({
+      actorId: guard.session?.user?.id, actorEmail: guard.session?.user?.email,
+      action: "coupon.soft_delete", targetType: "Coupon", targetId: params.id,
+      metadata: { issuedCount },
+    });
     return NextResponse.json({ ok: true, softDeleted: true, message: `발급된 쿠폰 ${issuedCount}건 — 비활성화 처리됨` });
   }
 
   try {
     await prisma.coupon.delete({ where: { id: params.id } });
+    await audit({
+      actorId: guard.session?.user?.id, actorEmail: guard.session?.user?.email,
+      action: "coupon.delete", targetType: "Coupon", targetId: params.id,
+    });
     return NextResponse.json({ ok: true });
   } catch (e: any) {
     if (e?.code === "P2025") return NextResponse.json({ error: "쿠폰을 찾을 수 없습니다." }, { status: 404 });

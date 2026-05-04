@@ -3,6 +3,8 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { assertAdminApi } from "@/lib/admin-guard";
 import { logger } from "@/lib/logger";
+import { cancelByProvider } from "@/lib/payments/refund";
+import { checkIdempotency, saveIdempotency } from "@/lib/idempotency";
 
 /**
  * 환불 처리 (전액/부분 모두 지원)
@@ -23,6 +25,8 @@ const Schema = z.object({
   refundPoint: z.boolean().default(true),
   refundCoupon: z.boolean().default(false),
   adminMemo: z.string().max(500).optional(),
+  /** PG 호출 없이 DB만 갱신 (이미 PG에서 환불된 경우 등 — 신중하게 사용) */
+  skipPgCall: z.boolean().default(false),
 });
 
 export async function POST(req: NextRequest) {
@@ -30,6 +34,9 @@ export async function POST(req: NextRequest) {
   if (!guard.ok) return NextResponse.json({ error: guard.error }, { status: guard.status });
 
   try {
+    const replay = await checkIdempotency(req, "admin.refunds.create", guard.session?.user?.id || null);
+    if (replay) return replay;
+
     const data = Schema.parse(await req.json());
     const order = await prisma.order.findUnique({
       where: { id: data.orderId },
@@ -50,6 +57,32 @@ export async function POST(req: NextRequest) {
     }
 
     const isFullRefund = data.amount + order.refundedAmount === order.totalAmount;
+
+    // PG 실제 환불 호출 (DB 변경 전에 수행 — 실패시 DB 롤백 없이 사고 방지)
+    if (!data.skipPgCall) {
+      if (!order.providerTxnId || !order.provider) {
+        return NextResponse.json({
+          error: "결제 정보가 없어 PG 환불을 호출할 수 없습니다. (관리자: skipPgCall 사용 신중히 검토)",
+        }, { status: 400 });
+      }
+      const pgResult = await cancelByProvider({
+        provider: order.provider,
+        providerTxnId: order.providerTxnId,
+        reason: data.reason,
+        amount: data.amount,
+      });
+      if (!pgResult.ok) {
+        logger.error("admin.refund.pg_failed", {
+          orderId: order.id,
+          provider: order.provider,
+          error: pgResult.error,
+        });
+        return NextResponse.json({
+          error: `PG 환불 실패: ${pgResult.error}`,
+        }, { status: 502 });
+      }
+      logger.info("admin.refund.pg_ok", { orderId: order.id, amount: data.amount, provider: order.provider });
+    }
 
     const result = await prisma.$transaction(async (tx) => {
       // 1) RefundRequest 생성
@@ -157,19 +190,15 @@ export async function POST(req: NextRequest) {
       actor: guard.session?.user?.email,
     });
 
-    // TODO: PG 실제 환불 API 호출
-    // - Toss: POST /v1/payments/{paymentKey}/cancel
-    // - 이니시스: 가맹점 관리자 또는 별도 API
-    // - 네이버페이: cancel API
-    // 현재는 DB만 갱신. PG 환불은 관리자가 수동 처리하거나 별도 cron으로 동기화
-
-    return NextResponse.json({
+    const responseBody = {
       ok: true,
       refundId: result.id,
       isFullRefund,
       message: isFullRefund ? "전액 환불 처리되었습니다." : "부분 환불 처리되었습니다.",
-      pgWarning: "PG사 실제 환불은 관리자가 별도로 처리하거나 PG 콘솔에서 확인해주세요.",
-    });
+      pgCalled: !data.skipPgCall,
+    };
+    await saveIdempotency(req, "admin.refunds.create", guard.session?.user?.id || null, 200, responseBody);
+    return NextResponse.json(responseBody);
   } catch (e: any) {
     if (e?.issues) return NextResponse.json({ error: e.issues[0]?.message || "유효성 오류" }, { status: 400 });
     logger.error("admin.refund.failed", { error: e.message });

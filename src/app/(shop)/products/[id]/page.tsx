@@ -12,6 +12,7 @@ import ProductJsonLd from "@/components/ProductJsonLd";
 import ViewItemTracker from "@/components/ViewItemTracker";
 import ImageGallery from "@/components/ImageGallery";
 import ProductInfoTabs from "@/components/ProductInfoTabs";
+import ProductQnaSection from "@/components/ProductQnaSection";
 
 const SITE = process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXTAUTH_URL || "http://localhost:3000";
 const SITE_NAME = process.env.NEXT_PUBLIC_BUSINESS_NAME || "낚시몰";
@@ -212,6 +213,11 @@ export default async function ProductDetailPage({ params }: { params: { id: stri
         <div className="text-sm text-gray-700 leading-relaxed whitespace-pre-line min-h-[120px] py-4">
           {product.description || "상세 설명이 등록되지 않았습니다."}
         </div>
+      </section>
+
+      {/* 상품 Q&A */}
+      <section id="section-qna" className="pt-12 scroll-mt-24">
+        <ProductQnaSection productId={product.id} />
       </section>
 
       {/* 배송 / 반품 안내 */}

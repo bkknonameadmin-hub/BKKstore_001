@@ -3,98 +3,105 @@ import { prisma } from "@/lib/prisma";
 import ProductCard from "@/components/ProductCard";
 import HeroCarousel from "@/components/HeroCarousel";
 import CategoryShortcut from "@/components/CategoryShortcut";
+import { getSiteSettings } from "@/lib/site-settings";
 
 export const revalidate = 60;
 
 export default async function HomePage() {
+  const settings = await getSiteSettings();
+
   const [featured, newest, best, categories] = await Promise.all([
-    prisma.product
-      .findMany({
-        where: { isActive: true, isFeatured: true },
-        take: 8,
-        orderBy: { createdAt: "desc" },
-        include: {
-          _count: { select: { reviews: { where: { isHidden: false } } } },
-        },
-      })
-      .catch(() => []),
-    prisma.product
-      .findMany({
-        where: { isActive: true },
-        take: 12,
-        orderBy: { createdAt: "desc" },
-      })
-      .catch(() => []),
-    prisma.product
-      .findMany({
-        where: { isActive: true },
-        take: 8,
-        orderBy: [{ reviews: { _count: "desc" } }, { isFeatured: "desc" }],
-        include: {
-          _count: { select: { reviews: { where: { isHidden: false } } } },
-          reviews: { where: { isHidden: false }, select: { rating: true } },
-        },
-      })
-      .catch(() => []),
-    prisma.category
-      .findMany({
-        where: { parentId: null },
-        orderBy: { sortOrder: "asc" },
-        take: 8,
-        select: { id: true, name: true, slug: true },
-      })
-      .catch(() => []),
+    settings.showFeaturedSection
+      ? prisma.product
+          .findMany({
+            where: { isActive: true, isFeatured: true },
+            take: 8,
+            orderBy: { createdAt: "desc" },
+            include: { _count: { select: { reviews: { where: { isHidden: false } } } } },
+          })
+          .catch(() => [])
+      : Promise.resolve([]),
+    settings.showNewSection
+      ? prisma.product
+          .findMany({
+            where: { isActive: true },
+            take: 12,
+            orderBy: { createdAt: "desc" },
+          })
+          .catch(() => [])
+      : Promise.resolve([]),
+    settings.showBestSection
+      ? prisma.product
+          .findMany({
+            where: { isActive: true },
+            take: 8,
+            orderBy: [{ reviews: { _count: "desc" } }, { isFeatured: "desc" }],
+            include: {
+              _count: { select: { reviews: { where: { isHidden: false } } } },
+              reviews: { where: { isHidden: false }, select: { rating: true } },
+            },
+          })
+          .catch(() => [])
+      : Promise.resolve([]),
+    settings.showCategoryShortcut
+      ? prisma.category
+          .findMany({
+            where: { parentId: null },
+            orderBy: { sortOrder: "asc" },
+            take: 8,
+            select: { id: true, name: true, slug: true, iconEmoji: true },
+          })
+          .catch(() => [])
+      : Promise.resolve([]),
   ]);
 
-  const bestWithRating = best.map((p) => {
-    const sum = p.reviews.reduce((s, r) => s + r.rating, 0);
+  const bestWithRating = best.map((p: any) => {
+    const sum = p.reviews.reduce((s: number, r: any) => s + r.rating, 0);
     const avg = p.reviews.length > 0 ? sum / p.reviews.length : 0;
     return { ...p, _avgRating: Math.round(avg * 10) / 10, _reviewCount: p._count.reviews };
   });
 
-  const isEmpty = featured.length === 0 && newest.length === 0;
+  const isEmpty = featured.length === 0 && newest.length === 0 && bestWithRating.length === 0;
 
   return (
     <div className="container-mall py-4 md:py-6 space-y-10 md:space-y-14">
       {/* 메인 히어로 + 사이드 배너 */}
       <section className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-        <div className="lg:col-span-2">
-          <HeroCarousel />
+        <div className={settings.sideBanners.length > 0 ? "lg:col-span-2" : "lg:col-span-3"}>
+          <HeroCarousel slides={settings.heroSlides} />
         </div>
-        <div className="hidden lg:grid grid-rows-2 gap-3">
-          <Link
-            href="/products?category=rod"
-            className="relative h-full rounded-xl bg-gradient-to-br from-slate-900 to-slate-700 text-white flex items-center px-7 overflow-hidden group"
-          >
-            <div className="z-10">
-              <div className="text-xs opacity-70">신상품</div>
-              <div className="text-xl font-extrabold mt-1">2026 신상 낚싯대</div>
-              <div className="text-xs opacity-80 mt-1">바로가기 →</div>
-            </div>
-            <div className="absolute -right-4 -bottom-4 text-7xl opacity-20 group-hover:scale-110 transition-transform">🎣</div>
-          </Link>
-          <Link
-            href="/products?category=reel&sort=best"
-            className="relative h-full rounded-xl bg-gradient-to-br from-accent-500 to-orange-400 text-white flex items-center px-7 overflow-hidden group"
-          >
-            <div className="z-10">
-              <div className="text-xs opacity-90">인기 카테고리</div>
-              <div className="text-xl font-extrabold mt-1">베스트 릴 모음</div>
-              <div className="text-xs opacity-90 mt-1">바로가기 →</div>
-            </div>
-            <div className="absolute -right-4 -bottom-4 text-7xl opacity-20 group-hover:scale-110 transition-transform">🎰</div>
-          </Link>
-        </div>
+        {settings.sideBanners.length > 0 && (
+          <div className="hidden lg:grid grid-rows-2 gap-3">
+            {settings.sideBanners.slice(0, 2).map((b, i) => (
+              <Link
+                key={i}
+                href={b.href}
+                className={`relative h-full rounded-xl ${b.bgClass || "bg-brand-500"} text-white flex items-center px-7 overflow-hidden group`}
+              >
+                <div className="z-10">
+                  <div className="text-xs opacity-90">{b.eyebrow}</div>
+                  <div className="text-xl font-extrabold mt-1">{b.title}</div>
+                  <div className="text-xs opacity-80 mt-1">바로가기 →</div>
+                </div>
+                {b.emoji && (
+                  <div className="absolute -right-4 -bottom-4 text-7xl opacity-20 group-hover:scale-110 transition-transform">
+                    {b.emoji}
+                  </div>
+                )}
+              </Link>
+            ))}
+          </div>
+        )}
       </section>
 
       {/* 카테고리 쇼트컷 */}
-      {categories.length > 0 && (
+      {settings.showCategoryShortcut && categories.length > 0 && (
         <CategoryShortcut categories={categories} />
       )}
 
-      {/* 혜택 띠 (배송/포인트/리뷰) */}
+      {/* 혜택 띠 */}
       <section className="grid grid-cols-3 gap-2 md:gap-4 text-center">
-        <Benefit icon="🚚" title="5만원 이상 무료배송" desc="전 상품 빠른 배송" />
+        <Benefit icon="🚚" title={`${settings.freeShippingMin.toLocaleString()}원 이상 무료배송`} desc="전 상품 빠른 배송" />
         <Benefit icon="💎" title="구매 1% 적립" desc="포인트 즉시 사용 가능" />
         <Benefit icon="✍️" title="리뷰 작성 시 적립" desc="포토 리뷰 추가 적립" />
       </section>
@@ -102,7 +109,7 @@ export default async function HomePage() {
       {isEmpty && <EmptyState />}
 
       {/* 베스트 랭킹 */}
-      {bestWithRating.length > 0 && (
+      {settings.showBestSection && bestWithRating.length > 0 && (
         <section>
           <SectionHeader title="🔥 실시간 베스트" subtitle="가장 많은 리뷰가 달린 인기 상품" href="/products?sort=best" />
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-5">
@@ -120,7 +127,7 @@ export default async function HomePage() {
       )}
 
       {/* 추천상품 */}
-      {featured.length > 0 && (
+      {settings.showFeaturedSection && featured.length > 0 && (
         <section>
           <SectionHeader title="추천상품" subtitle="MD가 직접 고른 이번 주 추천" href="/products" />
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-5">
@@ -132,7 +139,7 @@ export default async function HomePage() {
       )}
 
       {/* 신상품 */}
-      {newest.length > 0 && (
+      {settings.showNewSection && newest.length > 0 && (
         <section>
           <SectionHeader title="신상품" subtitle="새롭게 입고된 따끈따끈한 상품들" href="/products?sort=new" />
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 md:gap-5">

@@ -5,7 +5,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { generateOtpCode, isValidKrPhone, normalizePhone, sendSms } from "@/lib/sms";
-import { getClientInfo, rateLimit } from "@/lib/security";
+import { getClientInfo, rateLimitAsync } from "@/lib/security";
 
 const Schema = z.object({ phone: z.string().min(10).max(20) });
 
@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
     const userId = (session?.user as any)?.id as string | undefined;
 
     const { ip } = getClientInfo(req);
-    const rl = rateLimit(`phone-send:${ip || "anon"}`, 10, 10 * 60 * 1000);
+    const rl = await rateLimitAsync(`phone-send:${ip || "anon"}`, 10, 10 * 60 * 1000);
     if (!rl.ok) return NextResponse.json({ error: "잠시 후 다시 시도해주세요." }, { status: 429 });
 
     const { phone: rawPhone } = Schema.parse(await req.json());

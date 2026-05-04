@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { assertAdminApi } from "@/lib/admin-guard";
+import { assertStaffApi } from "@/lib/admin-guard";
 
 const Schema = z.object({
   content: z.string().min(1).max(5000).optional(),
@@ -9,7 +9,7 @@ const Schema = z.object({
 });
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
-  const guard = await assertAdminApi();
+  const guard = await assertStaffApi();
   if (!guard.ok) return NextResponse.json({ error: guard.error }, { status: guard.status });
   const ticket = await prisma.supportTicket.findUnique({
     where: { id: params.id },
@@ -23,7 +23,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 }
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
-  const guard = await assertAdminApi();
+  const guard = await assertStaffApi();
   if (!guard.ok) return NextResponse.json({ error: guard.error }, { status: guard.status });
 
   try {

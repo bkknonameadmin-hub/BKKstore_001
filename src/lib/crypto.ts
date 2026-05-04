@@ -4,25 +4,24 @@ import crypto from "node:crypto";
  * AES-256-GCM 양방향 암호화 + SHA-256 단방향 해시
  *
  * 환경변수 ENCRYPTION_KEY 는 32 바이트(64자 hex). 회전 시 KEK→DEK 패턴 권장.
- * 미설정시 개발용 더미 키로 동작 (콘솔 경고). 운영 배포 전 반드시 설정 필요.
+ * 환경 무관 필수: 미설정/형식 오류시 무조건 throw.
+ * (이전 더미 fallback("0".repeat(64))는 운영 NODE_ENV 누락시 모든 PII 평문 복구 위험으로 제거됨)
  */
 
 const KEY_HEX = process.env.ENCRYPTION_KEY;
-const FALLBACK = "0".repeat(64); // 64 hex chars = 32 bytes
 
 function getKey(): Buffer {
-  const hex = KEY_HEX && /^[0-9a-fA-F]{64}$/.test(KEY_HEX) ? KEY_HEX : FALLBACK;
   if (!KEY_HEX) {
-    if (process.env.NODE_ENV === "production") {
-      throw new Error("ENCRYPTION_KEY 환경변수가 설정되지 않았습니다 (운영 환경 필수).");
-    }
-    // dev: 한 번만 경고
-    if (!(global as any).__CRYPTO_WARNED) {
-      console.warn("[crypto] ENCRYPTION_KEY 미설정 — 개발용 더미키 사용 중");
-      (global as any).__CRYPTO_WARNED = true;
-    }
+    throw new Error(
+      "ENCRYPTION_KEY 환경변수가 설정되지 않았습니다. " +
+      "32 바이트(64자 hex) 문자열을 지정하세요. " +
+      "예: openssl rand -hex 32"
+    );
   }
-  return Buffer.from(hex, "hex");
+  if (!/^[0-9a-fA-F]{64}$/.test(KEY_HEX)) {
+    throw new Error("ENCRYPTION_KEY 형식 오류: 64자 hex 문자열이어야 합니다.");
+  }
+  return Buffer.from(KEY_HEX, "hex");
 }
 
 /** 평문 → "v1.<iv_hex>.<authTag_hex>.<cipher_hex>" */

@@ -4,7 +4,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { sendVerifyEmail, consumeEmailVerifyToken } from "@/lib/email-verify";
-import { rateLimit, getClientInfo } from "@/lib/security";
+import { rateLimitAsync, getClientInfo } from "@/lib/security";
 
 /**
  * GET  /api/auth/verify-email?token=...  → 토큰 검증 + emailVerified 업데이트
@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
   const userId = (session.user as any).id as string;
 
   const { ip } = getClientInfo(req);
-  const rl = rateLimit(`email-verify-send:${userId}:${ip || ""}`, 3, 10 * 60 * 1000);
+  const rl = await rateLimitAsync(`email-verify-send:${userId}:${ip || ""}`, 3, 10 * 60 * 1000);
   if (!rl.ok) return NextResponse.json({ error: "10분에 3회만 가능합니다." }, { status: 429 });
 
   const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true, name: true, emailVerified: true } });

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { assertAdminApi } from "@/lib/admin-guard";
+import { audit } from "@/lib/audit";
 
 const VariantSchema = z.object({
   id: z.string().optional(),
@@ -103,6 +104,11 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     });
 
     const refreshed = await prisma.product.findUnique({ where: { id: params.id }, include: { variants: true } });
+    await audit({
+      actorId: guard.session?.user?.id, actorEmail: guard.session?.user?.email,
+      action: "product.update", targetType: "Product", targetId: params.id,
+      metadata: { fields: Object.keys(data) },
+    });
     return NextResponse.json(refreshed);
   } catch (e: any) {
     if (e?.code === "P2025") return NextResponse.json({ error: "상품을 찾을 수 없습니다." }, { status: 404 });
@@ -118,11 +124,20 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
   const orderItemCount = await prisma.orderItem.count({ where: { productId: params.id } });
   if (orderItemCount > 0) {
     await prisma.product.update({ where: { id: params.id }, data: { isActive: false } });
+    await audit({
+      actorId: guard.session?.user?.id, actorEmail: guard.session?.user?.email,
+      action: "product.soft_delete", targetType: "Product", targetId: params.id,
+      metadata: { reason: "had_order_items", orderItemCount },
+    });
     return NextResponse.json({ ok: true, softDeleted: true });
   }
 
   try {
     await prisma.product.delete({ where: { id: params.id } });
+    await audit({
+      actorId: guard.session?.user?.id, actorEmail: guard.session?.user?.email,
+      action: "product.delete", targetType: "Product", targetId: params.id,
+    });
     return NextResponse.json({ ok: true });
   } catch (e: any) {
     if (e?.code === "P2025") return NextResponse.json({ error: "상품을 찾을 수 없습니다." }, { status: 404 });

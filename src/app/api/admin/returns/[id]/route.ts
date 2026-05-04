@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { assertAdminApi } from "@/lib/admin-guard";
+import { assertStaffApi } from "@/lib/admin-guard";
 import { logger } from "@/lib/logger";
 
 /**
@@ -28,7 +28,7 @@ const ALLOWED_TRANSITION: Record<string, string[]> = {
 };
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
-  const guard = await assertAdminApi();
+  const guard = await assertStaffApi();
   if (!guard.ok) return NextResponse.json({ error: guard.error }, { status: guard.status });
 
   try {

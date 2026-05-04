@@ -57,7 +57,7 @@ export default async function AdminOrderDetailPage({ params }: { params: { id: s
                 {order.items.map((it) => (
                   <tr key={it.id} className="border-b border-gray-50">
                     <td className="py-2.5">
-                      <Link href={`/products/${it.productId}`} target="_blank" className="hover:text-brand-600">
+                      <Link href={`/products/${it.productId}`} target="_blank" rel="noopener noreferrer" className="hover:text-brand-600">
                         {it.name}
                       </Link>
                     </td>

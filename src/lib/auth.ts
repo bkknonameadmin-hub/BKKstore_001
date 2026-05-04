@@ -6,7 +6,7 @@ import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { isLoginBlocked, logLoginAttempt, getClientInfo } from "@/lib/security";
-import { verifyTotp, decryptTotpSecret, verifyBackupCode } from "@/lib/totp";
+import { verifyTotp, decryptTotpSecret, verifyBackupCode, markTotpCodeUsed } from "@/lib/totp";
 
 const SIGNUP_BONUS_POINT = 1000;
 
@@ -72,7 +72,17 @@ const providers: NextAuthOptions["providers"] = [
           try {
             const secret = decryptTotpSecret((user as any).totpSecretEnc as string);
             otpOk = verifyTotp(digitsOnly, secret);
-          } catch {
+            if (otpOk) {
+              // 재사용 방어: 동일 (userId, code) 90초 내 두 번 사용 거부
+              const fresh = await markTotpCodeUsed(user.id, digitsOnly);
+              if (!fresh) {
+                otpOk = false;
+                await logLoginAttempt({ email, userId: user.id, success: false, reason: "totp_replay", ip, userAgent });
+                throw new Error("OTP_INVALID");
+              }
+            }
+          } catch (err: any) {
+            if (err?.message === "OTP_INVALID") throw err;
             otpOk = false;
           }
         }

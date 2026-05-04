@@ -56,6 +56,7 @@ export default async function EditProductPage({ params }: { params: { id: string
         <Link
           href={`/products/${product.id}`}
           target="_blank"
+          rel="noopener noreferrer"
           className="text-xs text-gray-500 hover:text-brand-600"
         >
           스토어에서 보기 ↗

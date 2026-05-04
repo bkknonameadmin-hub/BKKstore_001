@@ -117,6 +117,17 @@ export async function finalizeOrderPayment(args: {
       });
     }
 
+    // 6) 회원 등급 산정용 누적 결제액 가산 (배송비 제외, 쿠폰/적립 차감 후 결제 본액)
+    if (order.userId) {
+      const lifetimeIncrement = Math.max(0, order.totalAmount - order.shippingFee);
+      if (lifetimeIncrement > 0) {
+        await tx.user.update({
+          where: { id: order.userId },
+          data: { lifetimeAmount: { increment: lifetimeIncrement } },
+        });
+      }
+    }
+
     return productIds;
   }, {
     // 동시성 강화: Repeatable Read 격리 수준

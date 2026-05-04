@@ -75,8 +75,9 @@ export default function MobileNav({ categories, user, isAdmin }: Props) {
             <div className="flex-1 overflow-y-auto">
               <Section title="카테고리">
                 <Item href="/products" onClick={() => setOpen(false)}>전체상품</Item>
+                <Item href="/categories" onClick={() => setOpen(false)}>카테고리 모아보기</Item>
                 {categories.map((c) => (
-                  <Item key={c.id} href={`/products?category=${c.slug}`} onClick={() => setOpen(false)}>
+                  <Item key={c.id} href={`/category/${c.slug}`} onClick={() => setOpen(false)}>
                     {c.name}
                   </Item>
                 ))}

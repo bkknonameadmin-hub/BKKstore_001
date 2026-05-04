@@ -8,7 +8,8 @@ export type Slide = {
   title: string;
   subtitle?: string;
   cta: string;
-  bgClass: string;       // tailwind 그라디언트
+  bgClass?: string;      // tailwind 그라디언트
+  image?: string;        // 배경 이미지 URL (지정시 그라디언트 위에 어둡게 오버레이)
   textClass?: string;
 };
 
@@ -66,11 +67,18 @@ export default function HeroCarousel({ slides = DEFAULT_SLIDES }: { slides?: Sli
           href={s.href}
           aria-hidden={i !== idx}
           tabIndex={i === idx ? 0 : -1}
-          className={`absolute inset-0 flex items-center px-6 sm:px-10 lg:px-14 ${s.bgClass} text-white transition-opacity duration-700 ${
+          className={`absolute inset-0 flex items-center px-6 sm:px-10 lg:px-14 ${s.bgClass || "bg-brand-500"} text-white transition-opacity duration-700 overflow-hidden ${
             i === idx ? "opacity-100" : "opacity-0 pointer-events-none"
           }`}
         >
-          <div>
+          {s.image && (
+            <>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={s.image} alt="" className="absolute inset-0 w-full h-full object-cover" />
+              <div className="absolute inset-0 bg-black/45" />
+            </>
+          )}
+          <div className="relative">
             <div className="text-xs sm:text-sm opacity-80">{s.eyebrow}</div>
             <h2 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold mt-1.5 leading-tight">{s.title}</h2>
             {s.subtitle && <p className="mt-2 sm:mt-3 text-sm sm:text-base opacity-90">{s.subtitle}</p>}

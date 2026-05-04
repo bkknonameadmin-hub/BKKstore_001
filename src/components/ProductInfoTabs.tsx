@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 
 const TABS = [
   { id: "detail",   label: "상품상세" },
+  { id: "qna",      label: "Q&A" },
   { id: "shipping", label: "배송/반품" },
   { id: "reviews",  label: "리뷰" },
 ];

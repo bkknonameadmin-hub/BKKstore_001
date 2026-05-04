@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { generateOrderNo } from "@/lib/utils";
 import { calcCouponDiscount, validateCouponForOrder } from "@/lib/coupon";
 import { encrypt } from "@/lib/crypto";
+import { checkIdempotency, saveIdempotency } from "@/lib/idempotency";
 
 const PENDING_TTL_MS = 30 * 60 * 1000; // 30분 만료
 
@@ -30,6 +31,10 @@ export async function POST(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
     const userId = (session?.user as any)?.id as string | undefined;
+
+    // 멱등성: 동일 Idempotency-Key 재시도시 저장된 응답 그대로 반환
+    const replay = await checkIdempotency(req, "orders.create", userId || null);
+    if (replay) return replay;
 
     const body = await req.json();
     const data = Schema.parse(body);
@@ -157,11 +162,13 @@ export async function POST(req: NextRequest) {
       return o;
     });
 
-    return NextResponse.json({
+    const responseBody = {
       orderId: order.id,
       orderNo: order.orderNo,
       totalAmount: order.totalAmount,
-    });
+    };
+    await saveIdempotency(req, "orders.create", userId || null, 200, responseBody);
+    return NextResponse.json(responseBody);
   } catch (e: any) {
     if (e?.issues) return NextResponse.json({ error: e.issues[0]?.message || "유효성 오류" }, { status: 400 });
     return NextResponse.json({ error: e.message || "주문 생성 실패" }, { status: 400 });

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
-import { checkPasswordStrength, getClientInfo, rateLimit } from "@/lib/security";
+import { checkPasswordStrength, getClientInfo, rateLimitAsync } from "@/lib/security";
 import { encrypt, hashPhone } from "@/lib/crypto";
 
 const Schema = z.object({
@@ -17,7 +17,7 @@ const SIGNUP_BONUS_POINT = 1000;
 export async function POST(req: NextRequest) {
   try {
     const { ip } = getClientInfo(req);
-    const rl = rateLimit(`register:${ip || "anon"}`, 5, 10 * 60 * 1000);
+    const rl = await rateLimitAsync(`register:${ip || "anon"}`, 5, 10 * 60 * 1000);
     if (!rl.ok) {
       return NextResponse.json({ error: "요청이 너무 많습니다. 잠시 후 다시 시도해주세요." }, { status: 429 });
     }

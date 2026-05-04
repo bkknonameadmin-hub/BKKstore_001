@@ -12,6 +12,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const base: MetadataRoute.Sitemap = [
     { url: `${SITE}/`,           changeFrequency: "daily",   priority: 1.0 },
     { url: `${SITE}/products`,   changeFrequency: "daily",   priority: 0.9 },
+    { url: `${SITE}/categories`, changeFrequency: "weekly",  priority: 0.7 },
+    { url: `${SITE}/notice`,     changeFrequency: "weekly",  priority: 0.5 },
+    { url: `${SITE}/faq`,        changeFrequency: "monthly", priority: 0.5 },
     { url: `${SITE}/login`,      changeFrequency: "monthly", priority: 0.3 },
     { url: `${SITE}/register`,   changeFrequency: "monthly", priority: 0.3 },
     { url: `${SITE}/terms`,      changeFrequency: "yearly",  priority: 0.4 },
@@ -32,11 +35,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       }),
     ]);
 
-    const categoryUrls: MetadataRoute.Sitemap = categories.map((c) => ({
-      url: `${SITE}/products?category=${c.slug}`,
-      changeFrequency: "weekly" as const,
-      priority: 0.7,
-    }));
+    const categoryUrls: MetadataRoute.Sitemap = categories.flatMap((c) => [
+      { url: `${SITE}/category/${c.slug}`, changeFrequency: "weekly" as const, priority: 0.7 },
+      { url: `${SITE}/products?category=${c.slug}`, changeFrequency: "weekly" as const, priority: 0.6 },
+    ]);
 
     const productUrls: MetadataRoute.Sitemap = products.map((p) => ({
       url: `${SITE}/products/${p.id}`,

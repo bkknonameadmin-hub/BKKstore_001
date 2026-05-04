@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 
 const TABS = [
   { href: "/",                 label: "홈",       match: (p: string) => p === "/", icon: HomeIcon },
-  { href: "/products",         label: "카테고리", match: (p: string) => p.startsWith("/products"), icon: GridIcon },
+  { href: "/categories",       label: "카테고리", match: (p: string) => p.startsWith("/categories") || p.startsWith("/category") || p.startsWith("/products"), icon: GridIcon },
   { href: "/products?sort=best", label: "베스트",   match: (p: string, s: string) => s.includes("sort=best"), icon: FireIcon },
   { href: "/cart",             label: "장바구니", match: (p: string) => p.startsWith("/cart"), icon: CartIcon, badge: true },
   { href: "/mypage",           label: "마이",     match: (p: string) => p.startsWith("/mypage") || p.startsWith("/login"), icon: UserIcon },

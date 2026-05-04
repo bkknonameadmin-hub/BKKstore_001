@@ -15,13 +15,10 @@ import { finalizeOrderPayment, restoreOrderStock } from "@/lib/stock";
 
 function verifySignature(rawBody: string, signature: string | null): boolean {
   const secret = process.env.TOSS_WEBHOOK_SECRET;
-  if (!secret) {
-    // 미설정시 검증 스킵 (개발용) — 운영시 반드시 설정
-    return process.env.NODE_ENV !== "production";
-  }
+  // 시크릿 미설정시 환경 무관 무조건 거부 (운영 누락 사고 방어)
+  if (!secret) return false;
   if (!signature) return false;
   const expected = crypto.createHmac("sha256", secret).update(rawBody).digest("base64");
-  // 타이밍 공격 방어
   try {
     return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
   } catch {
@@ -33,6 +30,9 @@ export async function POST(req: NextRequest) {
   const rawBody = await req.text();
   const signature = req.headers.get("tosspayments-webhook-signature");
 
+  if (!process.env.TOSS_WEBHOOK_SECRET) {
+    return NextResponse.json({ error: "webhook secret not configured" }, { status: 503 });
+  }
   if (!verifySignature(rawBody, signature)) {
     return NextResponse.json({ error: "invalid signature" }, { status: 401 });
   }

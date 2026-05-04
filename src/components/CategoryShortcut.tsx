@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-type Category = { id: string; name: string; slug: string; emoji?: string };
+type Category = { id: string; name: string; slug: string; emoji?: string; iconEmoji?: string | null };
 
 const EMOJI_MAP: Record<string, string> = {
   rod: "🎣",
@@ -9,6 +9,8 @@ const EMOJI_MAP: Record<string, string> = {
   lure: "🐟",
   hook: "📍",
   tackle: "🎒",
+  wear: "👕",
+  bag: "🧳",
   clothing: "👕",
   accessory: "🧰",
 };
@@ -20,11 +22,11 @@ export default function CategoryShortcut({ categories }: { categories: Category[
         {categories.map((c) => (
           <Link
             key={c.id}
-            href={`/products?category=${c.slug}`}
+            href={`/category/${c.slug}`}
             className="group flex flex-col items-center gap-2 py-3 rounded-lg hover:bg-gray-50 transition-colors"
           >
             <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-brand-50 group-hover:bg-brand-100 flex items-center justify-center text-2xl transition-colors">
-              {c.emoji || EMOJI_MAP[c.slug] || "🛍"}
+              {c.iconEmoji || c.emoji || EMOJI_MAP[c.slug] || "🛍"}
             </div>
             <span className="text-xs sm:text-sm text-gray-700 group-hover:text-brand-600 font-medium">{c.name}</span>
           </Link>

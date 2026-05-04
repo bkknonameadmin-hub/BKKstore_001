@@ -1,7 +1,13 @@
 "use client";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
+import { useWishlist } from "@/store/wishlist";
+import { toast } from "@/store/toast";
 
+/**
+ * 상품 상세 페이지의 큰 위시리스트 토글 버튼.
+ * zustand 스토어와 연동되어 헤더 카운트/카드 하트 등과 즉시 동기화됨.
+ */
 export default function WishlistButton({
   productId,
   initialActive,
@@ -12,72 +18,54 @@ export default function WishlistButton({
   signedIn: boolean;
 }) {
   const router = useRouter();
-  const [active, setActive] = useState(initialActive);
-  const [loading, setLoading] = useState(false);
-  const [hint, setHint] = useState<string | null>(null);
+  const has = useWishlist((s) => s.ids.has(productId));
+  const pending = useWishlist((s) => s.pending.has(productId));
+  const initialized = useWishlist((s) => s.initialized);
+  const init = useWishlist((s) => s.init);
+  const toggle = useWishlist((s) => s.toggle);
 
-  // 힌트 자동 사라짐
+  // 서버 props(initialActive)와 스토어 상태가 어긋날 수 있어 첫 마운트 시 보정
   useEffect(() => {
-    if (!hint) return;
-    const t = setTimeout(() => setHint(null), 2500);
-    return () => clearTimeout(t);
-  }, [hint]);
+    if (!initialized && signedIn && initialActive) {
+      // 스토어가 아직 init되지 않았다면 최소 이 상품은 활성으로 알림
+      // WishlistInitializer 가 곧 전체 목록을 동기화함
+      init([productId]);
+    }
+  }, [initialized, signedIn, initialActive, productId, init]);
 
-  const toggle = async () => {
+  const handleClick = async () => {
     if (!signedIn) {
-      setHint("로그인 후 이용할 수 있습니다.");
-      // 1초 후 부드럽게 로그인 페이지로 이동
-      setTimeout(() => {
-        router.push("/login?callbackUrl=" + encodeURIComponent(window.location.pathname));
-      }, 1200);
+      toast.warning("로그인이 필요합니다.", { href: `/login?callbackUrl=${encodeURIComponent(window.location.pathname)}`, hrefLabel: "로그인" });
       return;
     }
-    setLoading(true);
-    try {
-      if (active) {
-        const res = await fetch(`/api/wishlist?productId=${productId}`, { method: "DELETE" });
-        if (!res.ok) throw new Error((await res.json()).error || "실패");
-        setActive(false);
-        setHint("위시리스트에서 제거했어요.");
-      } else {
-        const res = await fetch("/api/wishlist", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ productId }),
-        });
-        if (!res.ok) throw new Error((await res.json()).error || "실패");
-        setActive(true);
-        setHint("위시리스트에 추가했어요!");
-      }
-    } catch (e: any) {
-      setHint(e.message || "오류가 발생했습니다.");
-    } finally {
-      setLoading(false);
+    if (pending) return;
+
+    const r = await toggle(productId);
+    if (!r.ok) { toast.error(r.error || "처리 실패"); return; }
+    if (r.added) {
+      toast.success("위시리스트에 추가했어요!", { href: "/mypage/wishlist", hrefLabel: "보기" });
+    } else {
+      toast.info("위시리스트에서 제거했어요.");
     }
+    router.refresh();
   };
 
   return (
-    <div className="relative">
-      <button
-        type="button"
-        onClick={toggle}
-        disabled={loading}
-        title={active ? "위시리스트에서 제거" : "위시리스트에 추가"}
-        aria-pressed={active}
-        className={`w-10 h-10 rounded-full border flex items-center justify-center text-xl transition-all ${
-          active
-            ? "border-red-300 bg-red-50 text-red-500 hover:scale-105"
-            : "border-gray-300 text-gray-400 hover:border-red-300 hover:text-red-400 hover:scale-105"
-        } ${loading ? "opacity-60" : ""}`}
-      >
-        {active ? "❤" : "♡"}
-      </button>
-
-      {hint && (
-        <div className="absolute right-0 top-12 z-10 whitespace-nowrap bg-gray-900 text-white text-xs px-3 py-1.5 rounded shadow-lg animate-fade-in">
-          {hint}
-        </div>
-      )}
-    </div>
+    <button
+      type="button"
+      onClick={handleClick}
+      disabled={pending}
+      title={has ? "위시리스트에서 제거" : "위시리스트에 추가"}
+      aria-pressed={has}
+      className={`w-10 h-10 rounded-full border flex items-center justify-center text-xl transition-all ${
+        has
+          ? "border-rose-300 bg-rose-50 text-rose-500 hover:scale-105"
+          : "border-gray-300 text-gray-400 hover:border-rose-300 hover:text-rose-400 hover:scale-105"
+      } ${pending ? "opacity-60" : ""}`}
+    >
+      <svg width="20" height="20" viewBox="0 0 24 24" fill={has ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78z" />
+      </svg>
+    </button>
   );
 }

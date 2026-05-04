@@ -4,8 +4,23 @@ const { withSentryConfig } = require("@sentry/nextjs");
 const nextConfig = {
   reactStrictMode: true,
   images: {
+    // 화이트리스트 도메인만 허용 (이전 hostname:"**" 는 SSRF/과금 위험)
+    // 추가 도메인이 필요하면 IMAGE_REMOTE_HOSTS 콤마 환경변수에 호스트명을 등록.
     remotePatterns: [
-      { protocol: "https", hostname: "**" },
+      // 자체 업로드 / CDN
+      { protocol: "https", hostname: "fishing-mall.s3.ap-northeast-2.amazonaws.com" },
+      { protocol: "https", hostname: "*.cloudfront.net" },
+      // OAuth 프로필 이미지
+      { protocol: "https", hostname: "ssl.pstatic.net" },        // 네이버
+      { protocol: "https", hostname: "k.kakaocdn.net" },         // 카카오
+      { protocol: "https", hostname: "img1.kakaocdn.net" },
+      { protocol: "https", hostname: "lh3.googleusercontent.com" },
+      // 환경변수 동적 추가
+      ...(process.env.IMAGE_REMOTE_HOSTS || "")
+        .split(",")
+        .map((h) => h.trim())
+        .filter(Boolean)
+        .map((hostname) => ({ protocol: "https", hostname })),
     ],
   },
 };

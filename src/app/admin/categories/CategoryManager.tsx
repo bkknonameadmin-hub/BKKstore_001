@@ -8,6 +8,9 @@ type Category = {
   name: string;
   parentId: string | null;
   sortOrder: number;
+  description?: string | null;
+  bannerImage?: string | null;
+  iconEmoji?: string | null;
   productCount: number;
 };
 
@@ -80,7 +83,7 @@ export default function CategoryManager({ initial }: { initial: Category[] }) {
         {creating && (
           <CategoryForm
             mode="create"
-            initial={{ id: "", slug: "", name: "", parentId: creating.parentId, sortOrder: 0, productCount: 0 }}
+            initial={{ id: "", slug: "", name: "", parentId: creating.parentId, sortOrder: 0, description: "", bannerImage: "", iconEmoji: "", productCount: 0 }}
             parents={initial.filter((c) => !c.parentId)}
             onClose={() => setCreating(null)}
             onSaved={() => { setCreating(null); router.refresh(); }}
@@ -175,8 +178,28 @@ function CategoryForm({
   const [slug, setSlug] = useState(initial.slug);
   const [parentId, setParentId] = useState<string | null>(initial.parentId);
   const [sortOrder, setSortOrder] = useState<number>(initial.sortOrder);
+  const [description, setDescription] = useState(initial.description || "");
+  const [bannerImage, setBannerImage] = useState(initial.bannerImage || "");
+  const [iconEmoji, setIconEmoji] = useState(initial.iconEmoji || "");
+  const [uploading, setUploading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
+
+  const uploadBanner = async (file: File) => {
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/admin/upload", { method: "POST", body: fd });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "업로드 실패");
+      setBannerImage(data.largeUrl || data.url || data.mediumUrl);
+    } catch (e: any) {
+      setErr(e.message);
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -192,7 +215,15 @@ function CategoryForm({
       const res = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), slug: slug.trim(), parentId, sortOrder }),
+        body: JSON.stringify({
+          name: name.trim(),
+          slug: slug.trim(),
+          parentId,
+          sortOrder,
+          description: description.trim() || null,
+          bannerImage: bannerImage.trim() || null,
+          iconEmoji: iconEmoji.trim() || null,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "저장 실패");
@@ -239,6 +270,55 @@ function CategoryForm({
           type="number" className="input" value={sortOrder}
           onChange={(e) => setSortOrder(Number(e.target.value) || 0)}
         />
+      </div>
+
+      <div className="pt-3 border-t border-gray-100 space-y-3">
+        <p className="text-[11px] text-gray-400">랜딩 페이지 표시 (선택)</p>
+
+        <div>
+          <label className="label">아이콘 이모지</label>
+          <input
+            type="text" className="input text-2xl text-center max-w-[100px]"
+            value={iconEmoji} onChange={(e) => setIconEmoji(e.target.value)}
+            placeholder="🎣" maxLength={4}
+          />
+          <p className="text-[11px] text-gray-400 mt-1">카테고리 쇼트컷·랜딩에 사용됩니다.</p>
+        </div>
+
+        <div>
+          <label className="label">설명</label>
+          <textarea
+            className="input min-h-[60px]" value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="카테고리 hero 영역에 표시될 한 줄 설명"
+            maxLength={300}
+          />
+        </div>
+
+        <div>
+          <label className="label">배너 이미지</label>
+          <div className="flex gap-2 mb-2">
+            <input
+              type="text" className="input flex-1"
+              value={bannerImage} onChange={(e) => setBannerImage(e.target.value)}
+              placeholder="https://..."
+            />
+            <label className="btn-outline cursor-pointer whitespace-nowrap">
+              {uploading ? "업로드 중..." : "📷 업로드"}
+              <input
+                type="file" accept="image/*" className="hidden"
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadBanner(f); e.target.value = ""; }}
+                disabled={uploading}
+              />
+            </label>
+          </div>
+          {bannerImage && (
+            <div className="aspect-[5/2] bg-gray-100 rounded border border-gray-200 overflow-hidden">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={bannerImage} alt="" className="w-full h-full object-cover" />
+            </div>
+          )}
+        </div>
       </div>
 
       <button type="submit" disabled={loading} className="btn-primary w-full h-10 text-sm">

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { calcDiscountRate, formatKRW } from "@/lib/utils";
+import WishlistHeartButton from "./WishlistHeartButton";
 
 type Props = {
   id: string;
@@ -53,6 +54,9 @@ export default function ProductCard({
           {isFeatured && <span className="badge-best">BEST</span>}
           {isNew && <span className="badge-new">NEW</span>}
         </div>
+
+        {/* 위시리스트 하트 (우상단) */}
+        <WishlistHeartButton productId={id} variant="absolute" size={32} />
 
         {/* 순위 뱃지 */}
         {rank !== undefined && rank > 0 && (

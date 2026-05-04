@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { formatKRW } from "@/lib/utils";
 import { ORDER_STATUS_LABEL, ORDER_STATUS_COLOR } from "@/lib/order-status";
 import { getAdminEmails } from "@/lib/admin-guard";
+import UserRoleEditor from "./UserRoleEditor";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +22,8 @@ export default async function AdminUserDetailPage({ params }: { params: { id: st
     .filter((o) => o.status === "PAID" || o.status === "PREPARING" || o.status === "SHIPPED" || o.status === "DELIVERED")
     .reduce((s, o) => s + o.totalAmount, 0);
 
-  const isAdmin = getAdminEmails().includes(user.email.toLowerCase());
+  const isAdminByEnv = getAdminEmails().includes(user.email.toLowerCase());
+  const isAdmin = isAdminByEnv || user.role === "ADMIN" || user.role === "SUPER_ADMIN";
 
   return (
     <div className="space-y-4">
@@ -105,10 +107,18 @@ export default async function AdminUserDetailPage({ params }: { params: { id: st
                 <dd className="text-gray-800 text-xs">{user.createdAt.toLocaleString("ko-KR")}</dd>
               </div>
             </dl>
+          </section>
+
+          <section className="bg-white rounded border border-gray-200 p-5">
+            <h2 className="font-bold text-sm pb-3 mb-3 border-b border-gray-100">권한/상태 관리</h2>
+            <UserRoleEditor
+              userId={user.id}
+              currentRole={user.role as any}
+              currentStatus={user.status as any}
+            />
             {isAdmin && (
               <p className="mt-3 pt-3 border-t border-gray-100 text-[11px] text-gray-400 leading-relaxed">
-                관리자 권한은 환경변수 <code className="font-mono">ADMIN_EMAILS</code>로 관리됩니다.
-                해제하려면 <code className="font-mono">.env</code>에서 해당 이메일을 제거하세요.
+                .env 의 <code className="font-mono">ADMIN_EMAILS</code> 에 포함된 계정은 자동으로 ADMIN 으로 부트스트랩됩니다.
               </p>
             )}
           </section>

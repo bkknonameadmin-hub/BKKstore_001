@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { authorizeCron } from "@/lib/cron-auth";
 
 /**
  * 1년 미접속 회원 → 휴면 전환 (개인정보보호법)
@@ -9,17 +10,12 @@ import { prisma } from "@/lib/prisma";
  * 권장 주기: 1일 1회
  */
 
-function authorize(req: NextRequest) {
-  const token = req.headers.get("x-cron-token") || req.nextUrl.searchParams.get("token");
-  if (!process.env.CRON_SECRET) return process.env.NODE_ENV !== "production";
-  return token === process.env.CRON_SECRET;
-}
-
 const ONE_YEAR_MS = 365 * 24 * 60 * 60 * 1000;
 const FIVE_YEARS_MS = 5 * ONE_YEAR_MS;
 
 export async function GET(req: NextRequest) {
-  if (!authorize(req)) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  const auth = authorizeCron(req);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   const now = new Date();
   const dormantThreshold = new Date(now.getTime() - ONE_YEAR_MS);

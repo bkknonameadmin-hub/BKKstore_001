@@ -36,6 +36,8 @@ model User {
   phoneHash         String?
   phoneVerifiedAt   DateTime?
   pointBalance      Int        @default(0)
+  /// 누적 결제 금액 (결제완료~배송완료 합산) — 회원 등급 산정 기준
+  lifetimeAmount    Int        @default(0)
   passwordChangedAt DateTime?
   role              UserRole   @default(CUSTOMER)
   status            UserStatus @default(ACTIVE)
@@ -67,6 +69,8 @@ model User {
   auditLogs        AuditLog[]      @relation("ActorAudit")
   productQuestions ProductQuestion[]
   supportTickets   SupportTicket[]
+  stockNotifications StockNotification[]
+  passwordResetTokens PasswordResetToken[]
 
   @@index([status])
   @@index([phoneHash])
@@ -130,6 +134,61 @@ model PhoneVerification {
   @@index([expiresAt])
 }
 
+/// 동의 기록 (전자상거래법·개인정보보호법 입증용)
+/// 회원가입/주문/마케팅 동의 시점/내용을 변경 불가능 형태로 보관
+model ConsentLog {
+  id          String   @id @default(cuid())
+  userId      String?
+  email       String?
+  /// 동의 종류: "tos" | "privacy" | "marketing" | "third_party" | "age_14" 등
+  type        String
+  /// 동의 여부
+  agreed      Boolean
+  /// 동의 시 노출된 약관 버전/해시 (감사용)
+  version     String?
+  /// 컨텍스트: "register" | "checkout" | "settings"
+  source      String?
+  ip          String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  @@index([userId, type, createdAt])
+  @@index([email, type, createdAt])
+}
+
+/// 회원 데이터 export 요청 (개인정보보호법 접근권 대응)
+model DataExportRequest {
+  id           String    @id @default(cuid())
+  userId       String
+  status       String    @default("PENDING") // PENDING | PROCESSING | READY | FAILED | EXPIRED
+  /// 임시 다운로드 URL (서명 URL 또는 인증 토큰 포함)
+  downloadKey  String?   @unique
+  expiresAt    DateTime?
+  completedAt  DateTime?
+  errorMessage String?
+  createdAt    DateTime  @default(now())
+
+  @@index([userId, createdAt])
+  @@index([status])
+}
+
+/// 비밀번호 재설정 토큰 (이메일 링크 기반)
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// SHA-256 해시 저장 (평문 토큰은 발송 직후 폐기)
+  tokenHash String    @unique
+  expiresAt DateTime
+  consumedAt DateTime?
+  ip        String?
+  userAgent String?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, createdAt])
+  @@index([expiresAt])
+}
+
 model Address {
   id        String  @id @default(cuid())
   userId    String
@@ -149,14 +208,20 @@ model Address {
 }
 
 model Category {
-  id        String     @id @default(cuid())
-  slug      String     @unique
-  name      String
-  parentId  String?
-  parent    Category?  @relation("CategoryTree", fields: [parentId], references: [id])
-  children  Category[] @relation("CategoryTree")
-  sortOrder Int        @default(0)
-  products  Product[]
+  id          String     @id @default(cuid())
+  slug        String     @unique
+  name        String
+  parentId    String?
+  parent      Category?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children    Category[] @relation("CategoryTree")
+  sortOrder   Int        @default(0)
+  /// 카테고리 랜딩 페이지에 표시할 짧은 설명
+  description String?    @db.Text
+  /// 배너 이미지 URL (랜딩 hero 배경)
+  bannerImage String?
+  /// 카테고리 쇼트컷에 사용할 이모지 (없으면 slug 매핑)
+  iconEmoji   String?
+  products    Product[]
 
   @@index([parentId, sortOrder])
 }
@@ -186,6 +251,7 @@ model Product {
   reviews    Review[]
   wishlist   Wishlist[]
   questions  ProductQuestion[]
+  stockNotifications StockNotification[]
 
   @@index([categoryId, isActive])
   @@index([isActive, isFeatured])
@@ -597,6 +663,57 @@ model SupportTicket {
   @@index([userId, createdAt])
   @@index([status, createdAt])
   @@index([ticketNo])
+}
+
+/// 재입고 알림 신청 — 품절 상품에 대한 사용자 알림 요청
+model StockNotification {
+  id         String   @id @default(cuid())
+  userId     String
+  productId  String
+  /// 옵션 단위 알림이면 variantId, 단순 상품이면 null
+  variantId  String?
+  notifiedAt DateTime?              // 발송 완료 시각 (null = 대기 중)
+  createdAt  DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productId, variantId])
+  @@index([productId, notifiedAt])
+}
+
+/// 공지사항
+model Notice {
+  id         String   @id @default(cuid())
+  title      String
+  content    String   @db.Text
+  /// IMPORTANT|EVENT|GENERAL — UI 강조용
+  category   String   @default("GENERAL")
+  isPinned   Boolean  @default(false)
+  isPublished Boolean @default(true)
+  viewCount  Int      @default(0)
+  publishedAt DateTime @default(now())
+  createdBy  String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([isPublished, isPinned, publishedAt])
+}
+
+/// FAQ (자주 묻는 질문)
+model Faq {
+  id         String   @id @default(cuid())
+  /// SHOPPING|DELIVERY|RETURN|PAYMENT|ACCOUNT|ETC
+  category   String   @default("ETC")
+  question   String
+  answer     String   @db.Text
+  sortOrder  Int      @default(0)
+  isPublished Boolean @default(true)
+  viewCount  Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([isPublished, category, sortOrder])
 }
 
 /// 사이트 설정 (싱글톤 — id="default")

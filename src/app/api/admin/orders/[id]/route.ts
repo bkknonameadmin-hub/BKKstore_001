@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { assertAdminApi } from "@/lib/admin-guard";
+import { audit } from "@/lib/audit";
 import { NEXT_TRANSITIONS } from "@/lib/order-status";
 import {
   notifyShippingStarted,
@@ -130,6 +131,17 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     if (body.status && body.status !== order.status) {
       void dispatchAlimtalk(updated, body.status as OrderStatus).catch(() => {});
     }
+
+    await audit({
+      actorId: guard.session?.user?.id, actorEmail: guard.session?.user?.email,
+      action: "order.update", targetType: "Order", targetId: order.id,
+      metadata: {
+        from: order.status,
+        to: body.status || order.status,
+        fields: Object.keys(body),
+        restock: !!restock,
+      },
+    });
 
     return NextResponse.json(updated);
   } catch (e: any) {

@@ -1,26 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { authorizeCron } from "@/lib/cron-auth";
 
 /**
  * 만료된 PENDING 주문 자동 취소 + 쿠폰/적립금 reservation 해제
  *
  * 호출:
  *   GET /api/cron/expire-pending
- *   헤더: x-cron-token: ${CRON_SECRET}
+ *   헤더: x-cron-token: ${CRON_SECRET}  (또는 Authorization: Bearer ${CRON_SECRET})
  *
  * Vercel Cron / 외부 스케줄러에서 5분 간격 권장
  */
 
-function authorize(req: NextRequest) {
-  const token = req.headers.get("x-cron-token") || req.nextUrl.searchParams.get("token");
-  if (!process.env.CRON_SECRET) return process.env.NODE_ENV !== "production";
-  return token === process.env.CRON_SECRET;
-}
-
 export async function GET(req: NextRequest) {
-  if (!authorize(req)) {
-    return NextResponse.json({ error: "forbidden" }, { status: 403 });
-  }
+  const auth = authorizeCron(req);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   const now = new Date();
   const expired = await prisma.order.findMany({

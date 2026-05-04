@@ -53,7 +53,7 @@ export default async function AdminFeedsPage() {
           <a
             href={FEED_URL}
             target="_blank"
-            rel="noreferrer"
+            rel="noopener noreferrer"
             className="btn-outline text-xs h-10 px-3"
           >미리보기</a>
           <a
@@ -80,7 +80,7 @@ export default async function AdminFeedsPage() {
       <section className="bg-blue-50 border border-blue-200 rounded p-5">
         <h2 className="font-bold text-sm mb-3 text-blue-900">🚀 네이버 쇼핑 등록 절차</h2>
         <ol className="list-decimal list-inside space-y-1.5 text-sm text-blue-900">
-          <li><a href="https://adcenter.shopping.naver.com" target="_blank" rel="noreferrer" className="underline">네이버 쇼핑 파트너센터</a> 가입 (사업자 인증 필요)</li>
+          <li><a href="https://adcenter.shopping.naver.com" target="_blank" rel="noopener noreferrer" className="underline">네이버 쇼핑 파트너센터</a> 가입 (사업자 인증 필요)</li>
           <li>"EP 등록" 메뉴에서 위 피드 URL 입력</li>
           <li>갱신 주기 선택: 4시간 / 일 / 주 (4시간 권장)</li>
           <li>카테고리 매칭 → 매출 30~50% 추가 가능</li>

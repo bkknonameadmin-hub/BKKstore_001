@@ -3,7 +3,7 @@ import { z } from "zod";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { rateLimit, getClientInfo } from "@/lib/security";
+import { rateLimitAsync, getClientInfo } from "@/lib/security";
 import { notifyAdmin } from "@/lib/notify";
 
 const CreateSchema = z.object({
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
   const userId = (session?.user as any)?.id as string | undefined;
 
   const { ip } = getClientInfo(req);
-  const rl = rateLimit(`support:${userId || ip || "anon"}`, 5, 60 * 60 * 1000);
+  const rl = await rateLimitAsync(`support:${userId || ip || "anon"}`, 5, 60 * 60 * 1000);
   if (!rl.ok) return NextResponse.json({ error: "1시간 내 5건만 등록 가능합니다." }, { status: 429 });
 
   try {

@@ -123,9 +123,16 @@ export default function LoginPage() {
         </button>
       </div>
 
-      <div className="mt-6 text-center text-sm text-gray-500">
-        아직 회원이 아니신가요?{" "}
-        <Link href="/register" className="text-brand-600 hover:underline">회원가입</Link>
+      <div className="mt-6 text-center text-sm text-gray-500 space-y-2">
+        <div>
+          아직 회원이 아니신가요?{" "}
+          <Link href="/register" className="text-brand-600 hover:underline">회원가입</Link>
+        </div>
+        <div>
+          <Link href="/forgot-password" className="text-gray-600 hover:underline text-xs">
+            비밀번호를 잊으셨나요?
+          </Link>
+        </div>
       </div>
 
       <p className="mt-4 text-[11px] text-gray-400 text-center leading-relaxed">
