@@ -8,7 +8,7 @@ export default function LoginPage() {
   const router = useRouter();
   const sp = useSearchParams();
   const callbackUrl = sp.get("callbackUrl") || "/";
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [otpCode, setOtpCode] = useState("");
   const [otpStep, setOtpStep] = useState(false); // true 면 OTP 입력 단계
@@ -18,7 +18,12 @@ export default function LoginPage() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true); setError("");
-    const res = await signIn("credentials", { redirect: false, email, password, otpCode });
+    const res = await signIn("credentials", {
+      redirect: false,
+      username: username.trim().toLowerCase(),
+      password,
+      otpCode,
+    });
     setLoading(false);
     if (res?.error) {
       if (res.error === "OTP_REQUIRED") {
@@ -30,7 +35,7 @@ export default function LoginPage() {
       } else if (res.error.includes("로그인 시도") || res.error.includes("탈퇴") || res.error.includes("정지")) {
         setError(res.error);
       } else {
-        setError("이메일 또는 비밀번호가 올바르지 않습니다.");
+        setError("아이디 또는 비밀번호가 올바르지 않습니다.");
       }
     } else {
       router.push(callbackUrl);
@@ -53,10 +58,13 @@ export default function LoginPage() {
 
       <form onSubmit={submit} className="space-y-3">
         <div>
-          <label className="label">이메일</label>
+          <label className="label">아이디</label>
           <input
-            type="email" required className="input h-11" autoComplete="email"
-            value={email} onChange={(e) => setEmail(e.target.value)}
+            type="text" required minLength={4} maxLength={20}
+            className="input h-11" autoComplete="username"
+            placeholder="가입시 등록한 아이디"
+            value={username}
+            onChange={(e) => setUsername(e.target.value.toLowerCase())}
             disabled={otpStep}
           />
         </div>

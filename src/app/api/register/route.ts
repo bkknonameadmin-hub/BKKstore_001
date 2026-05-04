@@ -4,8 +4,10 @@ import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { checkPasswordStrength, getClientInfo, rateLimitAsync } from "@/lib/security";
 import { encrypt, hashPhone } from "@/lib/crypto";
+import { validateUsernameFormat, normalizeUsername } from "@/lib/username";
 
 const Schema = z.object({
+  username: z.string().min(4).max(20),
   email: z.string().email().max(320),
   password: z.string().min(12).max(128),
   name: z.string().min(1).max(60),
@@ -24,14 +26,27 @@ export async function POST(req: NextRequest) {
 
     const data = Schema.parse(await req.json());
 
+    // 아이디 형식 검증
+    const unameCheck = validateUsernameFormat(data.username);
+    if (!unameCheck.ok) {
+      return NextResponse.json({ error: unameCheck.reason }, { status: 400 });
+    }
+    const username = normalizeUsername(data.username);
+
     const pwCheck = checkPasswordStrength(data.password);
     if (!pwCheck.ok) {
       return NextResponse.json({ error: pwCheck.reason }, { status: 400 });
     }
 
     const email = data.email.toLowerCase().trim();
-    const exists = await prisma.user.findUnique({ where: { email } });
-    if (exists) return NextResponse.json({ error: "이미 가입된 이메일입니다." }, { status: 409 });
+
+    // 동시 가입 방지: 두 unique 컬럼 동시 검사
+    const [emailExists, unameExists] = await Promise.all([
+      prisma.user.findUnique({ where: { email }, select: { id: true } }),
+      prisma.user.findUnique({ where: { username }, select: { id: true } }),
+    ]);
+    if (unameExists) return NextResponse.json({ error: "이미 사용 중인 아이디입니다." }, { status: 409 });
+    if (emailExists) return NextResponse.json({ error: "이미 가입된 이메일입니다." }, { status: 409 });
 
     const passwordHash = await bcrypt.hash(data.password, 12);
 
@@ -42,6 +57,7 @@ export async function POST(req: NextRequest) {
     const user = await prisma.$transaction(async (tx) => {
       const u = await tx.user.create({
         data: {
+          username,
           email,
           name: data.name.trim(),
           phone: phoneRaw,                 // 평문 (호환)
@@ -51,7 +67,7 @@ export async function POST(req: NextRequest) {
           pointBalance: SIGNUP_BONUS_POINT,
           passwordChangedAt: new Date(),
         },
-        select: { id: true, email: true, name: true },
+        select: { id: true, email: true, name: true, username: true },
       });
 
       // 가입 축하 적립금 이력
@@ -81,6 +97,15 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(user);
   } catch (e: any) {
+    // 동시성 race: unique 제약 충돌 (P2002)
+    if (e?.code === "P2002") {
+      const target = (e?.meta?.target as string[] | string | undefined);
+      const isUsername = Array.isArray(target) ? target.includes("username") : String(target || "").includes("username");
+      return NextResponse.json(
+        { error: isUsername ? "이미 사용 중인 아이디입니다." : "이미 가입된 이메일입니다." },
+        { status: 409 }
+      );
+    }
     if (e?.issues) return NextResponse.json({ error: e.issues[0]?.message || "유효성 오류" }, { status: 400 });
     return NextResponse.json({ error: e.message || "회원가입 실패" }, { status: 400 });
   }

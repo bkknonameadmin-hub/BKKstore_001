@@ -1,8 +1,9 @@
 "use client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "@/store/toast";
+import { validateUsernameFormat, normalizeUsername } from "@/lib/username";
 
 function checkPasswordClient(pw: string): { score: number; label: string; color: string; reasons: string[] } {
   const reasons: string[] = [];
@@ -19,27 +20,92 @@ function checkPasswordClient(pw: string): { score: number; label: string; color:
   return { score, label: "매우 강함", color: "bg-emerald-600", reasons };
 }
 
+type UnameState =
+  | { status: "idle" }
+  | { status: "checking" }
+  | { status: "available"; checked: string }   // 사용가능 (어떤 값에 대해 확인했는지 저장)
+  | { status: "taken"; reason: string }
+  | { status: "invalid"; reason: string };
+
 export default function RegisterPage() {
   const router = useRouter();
-  const [form, setForm] = useState({ email: "", password: "", passwordConfirm: "", name: "", phone: "" });
+  const [form, setForm] = useState({ username: "", email: "", password: "", passwordConfirm: "", name: "", phone: "" });
+  const [uname, setUname] = useState<UnameState>({ status: "idle" });
   const [agreeTos, setAgreeTos] = useState(false);
   const [agreePrivacy, setAgreePrivacy] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   const pwInfo = useMemo(() => checkPasswordClient(form.password), [form.password]);
-  const canSubmit = pwInfo.score >= 4 && form.password === form.passwordConfirm && agreeTos && agreePrivacy;
+
+  const usernameOk =
+    uname.status === "available" && normalizeUsername(form.username) === uname.checked;
+
+  const canSubmit =
+    pwInfo.score >= 4 &&
+    form.password === form.passwordConfirm &&
+    usernameOk &&
+    agreeTos &&
+    agreePrivacy;
+
+  // 디바운스 자동 중복확인 (입력 변할 때마다 형식만 즉시 검증, 0.6초 정지시 서버 조회)
+  const debounceRef = useRef<number | null>(null);
+  useEffect(() => {
+    const v = form.username;
+    if (!v) { setUname({ status: "idle" }); return; }
+
+    const fmt = validateUsernameFormat(v);
+    if (!fmt.ok) { setUname({ status: "invalid", reason: fmt.reason || "" }); return; }
+
+    setUname({ status: "checking" });
+    if (debounceRef.current) window.clearTimeout(debounceRef.current);
+    debounceRef.current = window.setTimeout(async () => {
+      try {
+        const u = normalizeUsername(v);
+        const res = await fetch(`/api/auth/check-username?u=${encodeURIComponent(u)}`);
+        const data = await res.json();
+        if (data.available) setUname({ status: "available", checked: u });
+        else setUname({ status: "taken", reason: data.reason || "사용할 수 없는 아이디입니다." });
+      } catch {
+        setUname({ status: "invalid", reason: "확인 중 오류가 발생했습니다." });
+      }
+    }, 600);
+
+    return () => { if (debounceRef.current) window.clearTimeout(debounceRef.current); };
+  }, [form.username]);
+
+  const manualCheck = async () => {
+    const fmt = validateUsernameFormat(form.username);
+    if (!fmt.ok) { setUname({ status: "invalid", reason: fmt.reason || "" }); return; }
+    setUname({ status: "checking" });
+    try {
+      const u = normalizeUsername(form.username);
+      const res = await fetch(`/api/auth/check-username?u=${encodeURIComponent(u)}`);
+      const data = await res.json();
+      if (data.available) setUname({ status: "available", checked: u });
+      else setUname({ status: "taken", reason: data.reason || "사용할 수 없는 아이디입니다." });
+    } catch {
+      setUname({ status: "invalid", reason: "확인 중 오류가 발생했습니다." });
+    }
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    if (!usernameOk) { setError("아이디 중복확인을 완료해주세요."); return; }
     if (form.password !== form.passwordConfirm) { setError("비밀번호가 일치하지 않습니다."); return; }
     if (pwInfo.score < 4) { setError("비밀번호 정책을 만족하지 못합니다."); return; }
 
     setLoading(true);
     const res = await fetch("/api/register", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: form.email, password: form.password, name: form.name, phone: form.phone }),
+      body: JSON.stringify({
+        username: normalizeUsername(form.username),
+        email: form.email,
+        password: form.password,
+        name: form.name,
+        phone: form.phone,
+      }),
     });
     const data = await res.json();
     setLoading(false);
@@ -51,6 +117,17 @@ export default function RegisterPage() {
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
 
+  // 아이디 입력 메시지
+  const unameMsg = (() => {
+    switch (uname.status) {
+      case "checking": return { color: "text-gray-500", text: "확인 중..." };
+      case "available": return { color: "text-emerald-600", text: "✓ 사용 가능한 아이디입니다." };
+      case "taken": return { color: "text-red-500", text: uname.reason };
+      case "invalid": return { color: "text-red-500", text: uname.reason };
+      default: return { color: "text-gray-400", text: "4~20자 영문 소문자로 시작, 영소문자/숫자/언더스코어" };
+    }
+  })();
+
   return (
     <div className="container-mall py-16 max-w-md">
       <h1 className="text-2xl font-bold text-center mb-2">회원가입</h1>
@@ -58,8 +135,32 @@ export default function RegisterPage() {
 
       <form onSubmit={submit} className="space-y-3">
         <div>
+          <label className="label">아이디 *</label>
+          <div className="flex gap-2">
+            <input
+              type="text" required minLength={4} maxLength={20}
+              className="input h-11 flex-1"
+              placeholder="영문 소문자 / 숫자 / 언더스코어"
+              autoComplete="username"
+              value={form.username}
+              onChange={(e) => setForm((f) => ({ ...f, username: e.target.value.toLowerCase() }))}
+            />
+            <button
+              type="button"
+              onClick={manualCheck}
+              disabled={uname.status === "checking" || !form.username}
+              className="h-11 px-3 text-xs rounded border border-gray-300 hover:bg-gray-50 whitespace-nowrap disabled:opacity-50"
+            >
+              중복확인
+            </button>
+          </div>
+          <p className={`text-[11px] mt-1 ${unameMsg.color}`}>{unameMsg.text}</p>
+        </div>
+
+        <div>
           <label className="label">이메일 *</label>
           <input type="email" required className="input h-11" autoComplete="email" value={form.email} onChange={set("email")} />
+          <p className="text-[11px] text-gray-400 mt-1">주문 내역, 비밀번호 찾기 등에 사용됩니다.</p>
         </div>
 
         <div>
@@ -112,7 +213,7 @@ export default function RegisterPage() {
           </label>
           <label className="flex items-start gap-2 text-gray-600">
             <input type="checkbox" checked={agreePrivacy} onChange={(e) => setAgreePrivacy(e.target.checked)} className="mt-0.5" />
-            <span><b>(필수)</b> 개인정보 수집 및 이용에 동의합니다. (이메일/이름/연락처/배송지)</span>
+            <span><b>(필수)</b> 개인정보 수집 및 이용에 동의합니다. (아이디/이메일/이름/연락처/배송지)</span>
           </label>
         </div>
 

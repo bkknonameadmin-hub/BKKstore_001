@@ -86,18 +86,31 @@ export function getClientInfo(reqOrHeaders?: NextRequest | HeaderLike): { ip: st
   }
 }
 
-/** 로그인 시도 기록 */
+/**
+ * 로그인 시도 기록
+ *
+ * 주의: LoginLog.email 컬럼은 DB 호환을 위해 이름을 유지하지만
+ * 의미상은 "사용자가 입력한 식별자" 입니다.
+ *  - 아이디(credentials) 로그인: username 저장
+ *  - OAuth 로그인: 이메일 저장
+ *
+ * 새로운 호출부는 `identifier` 파라미터를 사용하세요.
+ * 기존 코드 호환을 위해 `email` 도 받습니다.
+ */
 export async function logLoginAttempt(args: {
-  email: string;
+  identifier?: string;
+  /** @deprecated identifier 사용 권장 */
+  email?: string;
   userId: string | null;
   success: boolean;
   reason?: string | null;
   ip?: string | null;
   userAgent?: string | null;
 }) {
+  const id = (args.identifier ?? args.email ?? "").toLowerCase().slice(0, 320);
   await prisma.loginLog.create({
     data: {
-      email: args.email.toLowerCase().slice(0, 320),
+      email: id,                 // DB 컬럼명은 email 유지 (실제로는 식별자)
       userId: args.userId,
       success: args.success,
       reason: args.reason || null,
@@ -108,26 +121,27 @@ export async function logLoginAttempt(args: {
 }
 
 /**
- * 레이트 리밋: 동일 이메일 또는 IP 의 최근 N분 동안 실패 횟수 체크
- * 임계 도달시 일시 잠금
+ * 레이트 리밋: 동일 식별자(아이디/이메일) 또는 IP 의 최근 N분 동안
+ * 실패 횟수 체크. 임계 도달시 일시 잠금.
  */
 const WINDOW_MS = 10 * 60 * 1000; // 10분
-const MAX_FAILS_PER_EMAIL = 5;
+const MAX_FAILS_PER_IDENT = 5;
 const MAX_FAILS_PER_IP = 20;
 
-export async function isLoginBlocked(email: string, ip: string | null): Promise<{ blocked: boolean; retryAfterSec?: number }> {
+export async function isLoginBlocked(identifier: string, ip: string | null): Promise<{ blocked: boolean; retryAfterSec?: number }> {
   const since = new Date(Date.now() - WINDOW_MS);
+  const id = identifier.toLowerCase();
 
-  const [emailFails, ipFails] = await Promise.all([
+  const [identFails, ipFails] = await Promise.all([
     prisma.loginLog.count({
-      where: { email: email.toLowerCase(), success: false, createdAt: { gte: since } },
+      where: { email: id, success: false, createdAt: { gte: since } },
     }),
     ip ? prisma.loginLog.count({
       where: { ip, success: false, createdAt: { gte: since } },
     }) : 0,
   ]);
 
-  if (emailFails >= MAX_FAILS_PER_EMAIL) {
+  if (identFails >= MAX_FAILS_PER_IDENT) {
     return { blocked: true, retryAfterSec: Math.ceil(WINDOW_MS / 1000) };
   }
   if (ip && ipFails >= MAX_FAILS_PER_IP) {

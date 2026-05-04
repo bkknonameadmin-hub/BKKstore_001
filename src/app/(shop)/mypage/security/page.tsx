@@ -19,7 +19,7 @@ export default async function SecurityPage() {
     prisma.user.findUnique({
       where: { id: userId },
       select: {
-        email: true, phone: true, phoneVerifiedAt: true,
+        username: true, email: true, phone: true, phoneVerifiedAt: true,
         passwordHash: true, passwordChangedAt: true, createdAt: true,
         totpEnabled: true, totpEnabledAt: true,
         emailVerified: true, emailVerifySentAt: true,
@@ -58,6 +58,12 @@ export default async function SecurityPage() {
       <section className="border border-gray-200 rounded p-5 bg-white">
         <h2 className="font-bold text-sm pb-3 mb-3 border-b border-gray-100">계정 정보</h2>
         <dl className="text-sm space-y-1.5">
+          {user.username && (
+            <div className="flex justify-between">
+              <dt className="text-gray-500">아이디</dt>
+              <dd className="font-mono font-bold">{user.username}</dd>
+            </div>
+          )}
           <div className="flex justify-between"><dt className="text-gray-500">이메일</dt><dd className="font-mono">{user.email}</dd></div>
           <div className="flex justify-between"><dt className="text-gray-500">가입일</dt><dd>{user.createdAt.toLocaleDateString("ko-KR")}</dd></div>
           {hasPassword && (

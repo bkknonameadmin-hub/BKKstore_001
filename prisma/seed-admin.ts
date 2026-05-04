@@ -36,18 +36,34 @@ async function main() {
   for (const email of emails) {
     const existing = await prisma.user.findUnique({ where: { email } });
 
+    // 이메일 local part 에서 username 후보 생성 (a-z0-9_ 만 허용, 4~20자)
+    const localPart = email.split("@")[0]?.toLowerCase().replace(/[^a-z0-9_]/g, "_") || "admin";
+    let unameCandidate = localPart.slice(0, 20);
+    if (unameCandidate.length < 4) unameCandidate = (unameCandidate + "_admin").slice(0, 20);
+    // 충돌 회피
+    let username = unameCandidate;
+    let suffix = 1;
+    while (await prisma.user.findUnique({ where: { username }, select: { id: true } })) {
+      const tail = String(suffix++);
+      username = unameCandidate.slice(0, 20 - tail.length - 1) + "_" + tail;
+      if (suffix > 99) { username = `admin_${Date.now().toString(36).slice(-6)}`; break; }
+    }
+
     if (existing) {
       const updated = await prisma.user.update({
         where: { email },
         data: {
           role: existing.role === "SUPER_ADMIN" ? "SUPER_ADMIN" : "ADMIN",
           status: "ACTIVE",
+          // 기존 회원에 username 이 없으면 채워준다
+          ...(existing.username ? {} : { username }),
         },
       });
-      console.log(`[=] 기존 회원 ${email} → role=${updated.role} 로 승격`);
+      console.log(`[=] 기존 회원 ${email} → role=${updated.role} (username=${updated.username || "-"})`);
     } else {
       const created = await prisma.user.create({
         data: {
+          username,
           email,
           name,
           passwordHash,
@@ -56,8 +72,8 @@ async function main() {
           emailVerified: new Date(),
         },
       });
-      console.log(`[+] 새 관리자 생성: ${email} (id=${created.id})`);
-      console.log(`    초기 비밀번호: ${password}`);
+      console.log(`[+] 새 관리자 생성: ${email} (id=${created.id}, username=${created.username})`);
+      console.log(`    로그인: ${created.username} / ${password}`);
       console.log(`    !!! 운영 전 반드시 비밀번호를 변경하세요 !!!`);
     }
   }
