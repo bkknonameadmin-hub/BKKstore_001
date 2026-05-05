@@ -1,6 +1,8 @@
 "use client";
 import { useSearchParams } from "next/navigation";
-import { useEffect } from "react";
+import { Suspense, useEffect } from "react";
+
+export const dynamic = "force-dynamic";
 
 /**
  * 본인인증 완료 페이지 (팝업창에서 표시).
@@ -8,7 +10,7 @@ import { useEffect } from "react";
  * provider 콜백 → /api/auth/identity/return → 이 페이지로 리다이렉트.
  * window.opener.postMessage 로 verificationId 전달 후 자동 종료.
  */
-export default function IdentityCompletePage() {
+function IdentityCompleteInner() {
   const sp = useSearchParams();
   const vid = sp.get("vid") || "";
 
@@ -34,5 +36,13 @@ export default function IdentityCompletePage() {
         <p className="text-[11px] text-gray-400 mt-4 font-mono">vid: {vid.slice(0, 16)}...</p>
       </div>
     </div>
+  );
+}
+
+export default function IdentityCompletePage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-emerald-50"><div className="text-sm text-gray-500">로딩 중...</div></div>}>
+      <IdentityCompleteInner />
+    </Suspense>
   );
 }

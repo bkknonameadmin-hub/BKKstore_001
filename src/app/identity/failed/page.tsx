@@ -1,8 +1,10 @@
 "use client";
 import { useSearchParams } from "next/navigation";
-import { useEffect } from "react";
+import { Suspense, useEffect } from "react";
 
-export default function IdentityFailedPage() {
+export const dynamic = "force-dynamic";
+
+function IdentityFailedInner() {
   const sp = useSearchParams();
   const reason = sp.get("reason") || "본인인증에 실패했습니다.";
 
@@ -30,5 +32,13 @@ export default function IdentityFailedPage() {
         </button>
       </div>
     </div>
+  );
+}
+
+export default function IdentityFailedPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-red-50"><div className="text-sm text-gray-500">로딩 중...</div></div>}>
+      <IdentityFailedInner />
+    </Suspense>
   );
 }

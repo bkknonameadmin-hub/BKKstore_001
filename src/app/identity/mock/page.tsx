@@ -1,6 +1,8 @@
 "use client";
 import { useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { Suspense, useState } from "react";
+
+export const dynamic = "force-dynamic";
 
 /**
  * 개발용 모의 본인인증 폼.
@@ -8,7 +10,7 @@ import { useState } from "react";
  * /api/auth/identity/return?... 로 GET 전송 → return 라우트가 IdentityVerification 을
  * COMPLETED 로 업데이트 + /identity/complete 로 리다이렉트.
  */
-export default function MockIdentityPage() {
+function MockIdentityInner() {
   const sp = useSearchParams();
   const reqSeq = sp.get("reqSeq") || "";
   const [name, setName] = useState("");
@@ -105,5 +107,13 @@ export default function MockIdentityPage() {
         </div>
       </main>
     </div>
+  );
+}
+
+export default function MockIdentityPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-gray-50"><div className="text-sm text-gray-500">로딩 중...</div></div>}>
+      <MockIdentityInner />
+    </Suspense>
   );
 }
