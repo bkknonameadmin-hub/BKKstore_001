@@ -56,6 +56,14 @@ model User {
   totpBackupCodes   String[]   @default([])       // bcrypt 해시 (1회 사용)
   /// 이메일 인증 발송 시각 (가입후 N일 미인증시 알림)
   emailVerifySentAt DateTime?
+  /// 본인확인기관(NICE/KCB/PASS 등) 발급 CI — 동일인 식별 (88자)
+  ci                 String?    @unique
+  /// 본인확인기관 발급 DI — 사이트 내 중복가입 식별 (64자)
+  di                 String?
+  /// 본인인증 완료 시각
+  identityVerifiedAt DateTime?
+  /// 본인인증 provider (nice/kcb/kcp/mock 등)
+  identityProvider   String?
   createdAt         DateTime   @default(now())
   updatedAt         DateTime   @updatedAt
 
@@ -191,6 +199,39 @@ model PasswordResetToken {
 
   @@index([userId, createdAt])
   @@index([expiresAt])
+}
+
+/// 본인확인기관(NICE/KCB/PASS 등) 인증 세션
+/// - PASS 앱/SMS/공동인증서 등으로 본인인증 후 결과를 1회용 토큰처럼 사용
+/// - 아이디 찾기, 비밀번호 찾기, 회원가입 본인확인 공통
+model IdentityVerification {
+  id          String    @id @default(cuid())
+  /// 본인확인기관에 전달한 요청 시퀀스 (콜백 매칭용)
+  reqSeq      String    @unique
+  provider    String    // 'nice' | 'kcb' | 'kcp' | 'mock'
+  purpose     String    // 'find-id' | 'find-password' | 'register' | 'reverify'
+
+  /// 인증 완료 후 채워지는 필드들 (provider 응답에서 추출)
+  ci          String?   // 88자 (provider 간 동일인 식별)
+  di          String?   // 64자 (사이트별 고유)
+  name        String?   // 실명
+  birthDate   String?   // YYYYMMDD
+  phone       String?   // 010XXXXXXXX
+  gender      String?   // 'M' | 'F'
+  nationality String?   // 'L' (내국인) | 'F' (외국인)
+  ageGroup    String?   // 0~9 (10대 단위)
+
+  status      String    @default("PENDING") // PENDING | COMPLETED | FAILED | EXPIRED
+  failReason  String?
+  consumedAt  DateTime? // 1회 사용 후 마킹
+
+  ip          String?
+  userAgent   String?
+  createdAt   DateTime  @default(now())
+  expiresAt   DateTime  // 일반적으로 5~10분
+
+  @@index([ci])
+  @@index([status, expiresAt])
 }
 
 model Address {
